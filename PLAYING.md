@@ -43,6 +43,18 @@ Round shot emphasizes hull damage at long range; chain shot emphasizes sails at 
 
 Sail over floating cargo to collect it. Docking sells it automatically. Repairs replenish hull, rigging, and crew. Purchasing a larger ship transfers fittings and artifact bonuses, and supplies a full crew. If your ship sinks, a tender returns you to your last harbor with your equipment intact and a loss of some coin and cargo.
 
+## Wind, weather, and navigation hazards
+
+Wind now changes through seeded weather fronts. Roughly every 35–75 seconds of active sailing, the prevailing direction and strength receive a new target: a lull, fresh breeze, or gale front. The transition is gradual, with smaller gusts between fronts. Front targets range from about 5–26 knots; local storm gusts can raise the reading to 38 knots. The wind arrow follows the local direction, including storm shifts. Menus and ports pause the environment.
+
+Squalls and stronger storms form offshore, drift with the wind, build over 16 seconds, and fade before dissipating. After the initial offshore squall, new cells may form roughly every 65–125 seconds; at most three coexist across the whole map. Warnings announce new cells and fronts, and the chart marks the moving weather. Entering a storm changes local wind, increases wave motion and rain, and damages rigging and hulls. AI ships face those conditions too. Reefing and weather equipment reduce exposure; navigation assistance and escorts reef automatically in rough water.
+
+Reefs and crosscurrents renew with the region’s encounters. Reefs appear as rock clusters with breaking water, and as **×** marks on the chart. Give the whole breaker area a wide berth. Crosscurrents use **≋** marks and visible flow arrows; they push vessels sideways without directly inflicting damage. Proximity notices and the chart footer warn about nearby dangers. Course planning avoids reefs and updates when the prevailing wind changes substantially.
+
+Direct collisions use each ship’s oriented hull footprint. Both hulls take damage according to closing speed and relative vessel size; gentle contact causes less damage than a hard ram. Hulls separate and lose speed on contact. Grounding and reef strikes also damage both player and AI boats, including bow and stern contact. A short contact cooldown prevents repeated impact damage every frame; pressing against a reef or coast can still scrape the hull. Friendly vessels can be damaged by collisions. A brief launch/rescue grace period protects freshly placed ships.
+
+Whitecaps and short breaking wave crests appear intermittently, increasing with wind and storm intensity. Ships heave and roll more in rough water. These waves communicate sea conditions; individual visible crests do not apply separate collision damage.
+
 ## Seas, patrons, and centuries
 
 The setting follows [Crescent_Seas_Game_Concept.md](Crescent_Seas_Game_Concept.md). This implementation keeps the Free Captain structure: there is no mandatory sequence of scripted acts.
@@ -144,6 +156,6 @@ Run the tests from the workspace root:
 node --test crescent-seas/tests/engine.test.cjs
 ```
 
-Tests cover wind and sail handling, firing geometry, projectile arcs, ammunition effects, capture, delivery, purchases, weather, recovery, repeated generated voyages, generation across 250 seeds, all harbor-to-harbor escort routes, artifact bonuses, and compact profile persistence. Additional tests cover all seven theaters, 100 regional escort routes, polygon coast clearance, safe harbor approaches, distinct patron service, earned whirlpool access, cross-era travel, and world-aware profile restoration. Browser QA covers WebGL startup, portrait and desktop layouts, patron and atlas screens, and the production renderer across all seven seas. `tests/visual.html` is a clearly labeled renderer/transition fixture that does not read or write captain saves.
+Tests cover wind and sail handling, firing geometry, projectile arcs, ammunition effects, capture, delivery, purchases, weather, recovery, repeated generated voyages, generation across 250 seeds, all harbor-to-harbor escort routes, artifact bonuses, and compact profile persistence. Additional tests cover changing wind fronts, storm drift and dissipation, hull collisions, grounding, reef strikes, current drift, environmental save boundaries, all seven theaters, 100 regional escort routes, polygon coast clearance, safe harbor approaches, distinct patron service, earned whirlpool access, cross-era travel, and world-aware profile restoration. Browser QA covers WebGL startup, portrait and desktop layouts, patron and atlas screens, and calm/rough-water rendering across all seven seas. `tests/visual.html` is a clearly labeled renderer/transition fixture that does not read or write captain saves.
 
 Crescent Seas uses its own engine, procedural models, vector illustrations, and synthesized audio. Boarding resolves as a crew contest; it does not include a separate sword-fighting game.

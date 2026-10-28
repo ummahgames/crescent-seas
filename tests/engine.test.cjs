@@ -81,7 +81,7 @@ test('port purchases deduct coin, enforce caps and locks, transfer upgrades and 
 });
 test('storms damage exposed ships; reefing and weather glass mitigate the damage', () => {
   function storm(reef, glass) {
-    const s = fresh(); s.ships = []; s.player.x=s.weather[0].x;s.player.z=s.weather[0].z; s.player.upgrades.weather = glass; s.player.sails = 100;
+    const s = fresh(); s.ships = []; s.player.x=s.weather[0].x;s.player.z=s.weather[0].z; s.player.invulnerable=0;s.player.upgrades.weather = glass; s.player.sails = 100;
     advance(s, 1, { sail: reef ? 0 : 1 }); return s.player.sails;
   }
   const full = storm(false, 0), reef = storm(true, 0), glass = storm(false, 1); assert.ok(full < reef); assert.ok(full < glass);
@@ -207,8 +207,8 @@ test('rare Turning Waters unlock through delivered voyages and reject premature 
   s.player.x=s.gate.x;s.player.z=s.gate.z;s.complete=false;assert.equal(C.travel(s,'redsea'),false,'finish the active commission');s.complete=true;
   assert.equal(C.travel(s,'aceh'),false,'only the charted passage is available');
   s.player.upgrades.hull=2;s.player.hull=135;s.player.sails=77;s.player.crew=31;s.cargo=240;
-  const gold=s.gold,rep={...s.standing};assert.equal(C.travel(s,'redsea'),true);
-  assert.equal(s.worldId,'redsea');assert.equal(C.world(s).year,1510);assert.equal(s.gold,gold);assert.equal(s.cargo,240);
+  s.player.coastCooldown=999;const gold=s.gold,rep={...s.standing};assert.equal(C.travel(s,'redsea'),true);
+  assert.equal(s.worldId,'redsea');assert.equal(s.player.coastCooldown,0);assert.equal(C.world(s).year,1510);assert.equal(s.gold,gold);assert.equal(s.cargo,240);
   assert.equal(s.player.hull,135);assert.equal(s.player.sails,77);assert.equal(s.player.crew,31);assert.equal(s.player.upgrades.hull,2);assert.deepEqual(s.standing,rep);
   assert.equal(s.turning.fragments,0);assert.equal(s.turning.nextAt,6);assert.equal(s.gate,null);assert.equal(s.contracts.length,3);assert.equal(s.checkpoint,'jeddah');
   assert.ok(s.visitedWorlds.includes('india')&&s.visitedWorlds.includes('redsea'));
@@ -247,7 +247,7 @@ test('all 100 regional harbor pairs remain reachable by an escorted ship',()=>{
       if(start===end)continue;
       const s=C.create(10,id);let voyage;
       do{voyage=C.generateVoyage(s,'passage');}while(!voyage.legs.some(m=>m.kind==='escort'));
-      const m=voyage.legs.find(m=>m.kind==='escort');m.startPort=start.id;m.port=end.id;voyage.legs=[m];s.voyage=voyage;s.legIndex=0;s.chapterSpawned=-1;s.ships=[];s.loot=[];s.weather=[];C.spawnChapter(s);
+      const m=voyage.legs.find(m=>m.kind==='escort');m.startPort=start.id;m.port=end.id;voyage.legs=[m];s.voyage=voyage;s.legIndex=0;s.chapterSpawned=-1;s.ships=[];s.loot=[];s.weather=[];s.atmosphere.disabled=true;C.spawnChapter(s);
       const ship=s.ships.find(v=>v.role==='escort');s.ships=[ship];
       for(let i=0;i<60*600&&!ship.arrived;i++){s.player.x=ship.x+45;s.player.z=ship.z+35;C.step(s,{sail:0});}
       assert.ok(ship.arrived,`${id}: ${start.name} → ${end.name}`);count++;
@@ -271,4 +271,53 @@ test('regional silhouettes govern offshore spawns, harbor approaches and every p
     }
   }
   const s=fresh(),home=C.portById(s,'calicut');assert.ok(C.harborPoint(home,55).x<home.port.x,'west-facing harbor starts to seaward');
+});
+
+test('wind fronts vary substantially and reproduce with the same seed without changing the voyage generator seed',()=>{
+  const a=fresh(),b=fresh(),seed=a.seed,angles=[],speeds=[],kinds=new Set();let stormBirths=0;
+  for(let j=0;j<600;j++){
+    for(const s of [a,b]){s.time+=1;C.updateWeather(s,1);}
+    angles.push(a.wind.angle);speeds.push(a.wind.strength);kinds.add(a.atmosphere.kind);if(a.events.some(e=>e.text?.includes('building offshore')))stormBirths++;
+    a.events=[];b.events=[];assert.ok(a.weather.length<=3);
+  }
+  assert.equal(a.seed,seed);assert.deepEqual(a.wind,b.wind);assert.deepEqual(a.weather,b.weather);
+  assert.ok(Math.max(...angles)-Math.min(...angles)>.8);assert.ok(Math.max(...speeds)-Math.min(...speeds)>10);assert.ok(kinds.size>=3);assert.ok(stormBirths>=2);
+});
+
+test('storm cells drift, strengthen gradually, dissipate and only affect local water',()=>{
+  const s=fresh();s.weather=[];const storm=C.spawnStorm(s),start={x:storm.x,z:storm.z};
+  assert.equal(C.stormPower(storm),0);
+  s.time+=20;C.updateWeather(s,20);assert.ok(C.dist(start,storm)>50);assert.ok(C.stormPower(storm)>.5);
+  const local=C.windAt(s,storm),far=C.windAt(s,{x:storm.x+1000,z:storm.z+1000});assert.ok(local.hazard>.5);assert.equal(far.hazard,0);assert.ok(local.strength>far.strength);
+  s.atmosphere.nextStorm=Infinity;storm.age=storm.life-1;s.time+=2;C.updateWeather(s,2);assert.ok(!s.weather.includes(storm));
+});
+
+test('hull collisions damage both participants, separate boats, respect speed and cannot farm damage every frame',()=>{
+  function crash(speed){
+    const s=chapter(1),other=s.ships[0];s.hazards=[];s.weather=[];s.atmosphere.disabled=true;s.player.invulnerable=0;
+    Object.assign(s.player,{x:0,z:0,angle:0,speed});Object.assign(other,{x:0,z:19,angle:Math.PI,speed,invulnerable:0});s.time=10;
+    const before=[s.player.hull,other.hull];C.collideShips(s);const losses=[before[0]-s.player.hull,before[1]-other.hull];assert.ok(C.dist(s.player,other)>19);const after=[s.player.hull,other.hull];C.collideShips(s);assert.deepEqual([s.player.hull,other.hull],after);return losses;
+  }
+  const gentle=crash(3),hard=crash(25);assert.ok(gentle.every(v=>v>0));assert.ok(hard.every((v,j)=>v>gentle[j]*3));
+  const a={class:'frigate',x:0,z:0,angle:0},b={class:'frigate',x:18,z:0,angle:0};assert.equal(C.hullContact(a,b),null,'long hulls can pass broadside without a false circular collision');
+});
+
+test('coasts and charted reefs damage player and AI hulls; currents move both ships',()=>{
+  function grounding(player,reef){
+    const s=chapter(1);s.weather=[];s.atmosphere.disabled=true;const v=player?s.player:s.ships[0];s.player.invulnerable=0;v.invulnerable=0;
+    if(reef){s.hazards=[{kind:'reef',x:0,z:0,r:35}];Object.assign(v,{x:-44,z:0,angle:Math.PI/2,speed:30});}
+    else{const i=C.portById(s,'calicut');s.hazards=[];Object.assign(v,C.harborPoint(i,-51));v.angle=Math.PI/2;v.speed=30;}
+    if(player)s.ships=[];else{s.ships=[v];s.player.x=-1000;s.player.z=0;v.home={x:v.x+100,z:v.z};}
+    const before=v.hull;C.step(s,{},.05);assert.ok(v.hull<before,`${player?'player':'AI'} ${reef?'reef':'coast'} impact`);
+  }
+  for(const player of [true,false])for(const reef of [true,false])grounding(player,reef);
+  const plain=fresh(),flow=fresh();for(const s of [plain,flow]){s.ships=[];s.weather=[];s.atmosphere.disabled=true;s.hazards=[];Object.assign(s.player,{x:0,z:0,angle:0});}
+  flow.hazards=[{kind:'current',x:0,z:0,r:200,angle:Math.PI/2,strength:5,seed:0}];advance(plain,2);advance(flow,2);assert.ok(flow.player.x-plain.player.x>5);
+});
+
+test('new environmental encounters stay out of compact saves and regenerate safely on resume',()=>{
+  const s=fresh(),before=C.serialize(s);assert.ok(s.hazards.some(h=>h.kind==='reef'));assert.ok(s.hazards.some(h=>h.kind==='current'));
+  s.weather=Array(50).fill(s.weather[0]);s.contacts={test:Infinity};s.hazards=Array(50).fill(s.hazards[0]);assert.equal(C.serialize(s),before);
+  const loaded=C.restore(before);assert.ok(loaded.hazards.length<=6);assert.ok(loaded.weather.length<=3);assert.equal(loaded.worldId,s.worldId);
+  const snapshot=JSON.stringify({wind:loaded.wind,weather:loaded.weather});loaded.phase='port';advance(loaded,3);assert.equal(JSON.stringify({wind:loaded.wind,weather:loaded.weather}),snapshot);
 });

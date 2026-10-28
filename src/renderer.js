@@ -2,6 +2,7 @@
 (function (root) {
   'use strict';
   const C = root.Corsair;
+  const clampSea=v=>Math.max(0,Math.min(1,v));
   const rgb = hex => [(hex >> 16 & 255) / 255, (hex >> 8 & 255) / 255, (hex & 255) / 255];
   const identity = () => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
   function multiply(a, b) {
@@ -154,8 +155,8 @@
     }
     return g;
   }
-  const vertex = `precision mediump float;attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uVP;uniform mat4 uModel;uniform float uTime;uniform float uWater;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;void main(){vec4 world=uModel*vec4(aPosition,1.);if(uWater>.5)world.y+=sin(world.x*.025+uTime*.75)*.48+cos(world.z*.037-uTime*.9)*.35;vWorld=world.xyz;vNormal=mat3(uModel)*aNormal;vColor=aColor;gl_Position=uVP*world;}`;
-  const fragment = `precision mediump float;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;uniform float uTime;uniform float uWater;uniform float uAlpha;uniform vec3 uEye;uniform vec4 uIslands[12];uniform vec3 uTint;uniform vec3 uDeep;uniform vec3 uShallow;uniform vec3 uSky;void main(){vec3 color;vec3 light=normalize(vec3(-.55,1.,.35));if(uWater>.5){float depth=1.;for(int i=0;i<12;i++){if(uIslands[i].z>.1){float d=length((vWorld.xz-uIslands[i].xy)/uIslands[i].zw);depth=min(depth,smoothstep(.85,1.95,d));}}float waves=sin(vWorld.x*.105+sin(vWorld.z*.09+uTime*.3)*1.4+uTime*.9)*sin(vWorld.z*.13-uTime*.65);float ripples=sin(vWorld.x*.28+vWorld.z*.17+uTime*1.2)*.5+.5;vec3 n=normalize(vec3(cos(vWorld.x*.075+uTime)*.13,1.,sin(vWorld.z*.08-uTime)*.17));vec3 view=normalize(uEye-vWorld);float spec=pow(max(dot(reflect(-light,n),view),0.),60.);color=mix(uShallow,uDeep,depth);color+=waves*.016+smoothstep(.76,1.,ripples)*.019+spec*vec3(.34,.38,.29);float shore=(1.-smoothstep(0.,.13,abs(depth-.16)));color+=shore*(.07+.03*sin(uTime+vWorld.x*.2));}else{float diffuse=max(dot(normalize(vNormal),light),0.);diffuse=floor(diffuse*5.)/5.;color=vColor*(.57+diffuse*.46)*uTint;}float fog=1.-exp(-pow(length(vWorld-uEye)/1750.,2.));color=mix(color,uSky,min(fog,.9));gl_FragColor=vec4(color,uAlpha);}`;
+  const vertex = `precision mediump float;attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uVP;uniform mat4 uModel;uniform float uTime;uniform float uWater;uniform vec4 uSea;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;void main(){vec4 world=uModel*vec4(aPosition,1.);if(uWater>.5)world.y+=sin(dot(world.xz,uSea.xy)*.043-uTime*1.7)*(.35+uSea.z*.025+uSea.w*1.1)+cos(world.x*.026-world.z*.031-uTime*.9)*(.35+uSea.z*.025+uSea.w*1.1)*.45;vWorld=world.xyz;vNormal=mat3(uModel)*aNormal;vColor=aColor;gl_Position=uVP*world;}`;
+  const fragment = `precision mediump float;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;uniform float uTime;uniform float uWater;uniform float uAlpha;uniform vec3 uEye;uniform vec4 uIslands[12];uniform vec3 uTint;uniform vec3 uDeep;uniform vec3 uShallow;uniform vec3 uSky;uniform vec4 uSea;void main(){vec3 color;vec3 light=normalize(vec3(-.55,1.,.35));if(uWater>.5){float depth=1.;for(int i=0;i<12;i++){if(uIslands[i].z>.1){float d=length((vWorld.xz-uIslands[i].xy)/uIslands[i].zw);depth=min(depth,smoothstep(.85,1.95,d));}}float waves=sin(vWorld.x*.105+sin(vWorld.z*.09+uTime*.3)*1.4+uTime*.9)*sin(vWorld.z*.13-uTime*.65);float ripples=sin(vWorld.x*.28+vWorld.z*.17+uTime*1.2)*.5+.5;vec3 n=normalize(vec3(cos(vWorld.x*.075+uTime)*.13,1.,sin(vWorld.z*.08-uTime)*.17));vec3 view=normalize(uEye-vWorld);float spec=pow(max(dot(reflect(-light,n),view),0.),60.);color=mix(uShallow,uDeep,depth);float along=dot(vWorld.xz,uSea.xy),across=dot(vWorld.xz,vec2(uSea.y,-uSea.x));float crest=smoothstep(.94,1.,sin(along*.065-uTime*1.5+sin(across*.025)*1.2));float patches=smoothstep(.25,.8,sin(across*.07+uTime*.45))*smoothstep(.15,.65,sin(along*.009+uTime*.2));color=mix(color,vec3(.69,.82,.78),crest*patches*clamp((uSea.z-6.)*.012+uSea.w*.3,.02,.6));color+=waves*.016+smoothstep(.76,1.,ripples)*.019+spec*vec3(.34,.38,.29);float shore=(1.-smoothstep(0.,.13,abs(depth-.16)));color+=shore*(.07+.03*sin(uTime+vWorld.x*.2));}else{float diffuse=max(dot(normalize(vNormal),light),0.);diffuse=floor(diffuse*5.)/5.;color=vColor*(.57+diffuse*.46)*uTint;}float fog=1.-exp(-pow(length(vWorld-uEye)/1750.,2.));color=mix(color,uSky,min(fog,.9));gl_FragColor=vec4(color,uAlpha);}`;
   class Renderer {
     constructor(canvas) {
       this.canvas = canvas; this.gl = canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -165,7 +166,7 @@
       this.program = gl.createProgram(); gl.attachShader(this.program, shader(gl.VERTEX_SHADER, vertex)); gl.attachShader(this.program, shader(gl.FRAGMENT_SHADER, fragment)); gl.linkProgram(this.program);
       if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(this.program));
       gl.useProgram(this.program); this.u = {};
-      for (const name of ['VP', 'Model', 'Time', 'Water', 'Alpha', 'Eye','Islands','Tint','Deep','Shallow','Sky']) this.u[name] = gl.getUniformLocation(this.program, `u${name}${name === 'Islands' ? '[0]' : ''}`);
+      for (const name of ['VP', 'Model', 'Time', 'Water', 'Alpha', 'Eye','Islands','Tint','Deep','Shallow','Sky','Sea']) this.u[name] = gl.getUniformLocation(this.program, `u${name}${name === 'Islands' ? '[0]' : ''}`);
       this.attributes = ['Position', 'Normal', 'Color'].map(n => gl.getAttribLocation(this.program, `a${n}`));
       gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       this.worldId=null;this.land=null;
@@ -191,7 +192,7 @@
       gl.uniformMatrix4fv(this.u.Model, false, m); gl.uniform1f(this.u.Alpha, alpha); gl.uniform1f(this.u.Water, water); gl.uniform3fv(this.u.Tint, tint); gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
     }
     emit(e) {
-      if (!['hit', 'fire', 'splash', 'sink', 'collect'].includes(e.type)) return;
+      if (!['hit','fire','splash','sink','collect','collision'].includes(e.type)) return;
       const count = e.type === 'sink' ? 26 : e.type === 'fire' ? 10 : 8;
       for (let i = 0; i < count; i++) this.particles.push({ x: e.x, y: e.type === 'fire' ? 6 : 2, z: e.z, vx: (Math.random() - .5) * (e.type === 'sink' ? 32 : 18), vz: (Math.random() - .5) * 20, vy: e.type === 'fire' ? 7 + Math.random() * 5 : 10 + Math.random() * 20, age: 0, life: .8 + Math.random() * .7, type: e.type });
     }
@@ -203,7 +204,7 @@
       return { x: (nx * .5 + .5) * this.canvas.clientWidth, y: (-ny * .5 + .5) * this.canvas.clientHeight };
     }
     frame(s, dt, menu = false) {
-      const w=C.world(s);
+      const w=C.world(s),localWind=C.windAt(s,s.player),storm=localWind.hazard;
       if(this.worldId!==s.worldId){if(this.land)this.gl.deleteBuffer(this.land.buffer);this.land=this.upload(terrainGeometry(w));this.worldId=s.worldId;this.follow={x:s.player.x,z:s.player.z};this.wakes=[];this.particles=[];}
       const gl = this.gl, t = s.time + (menu ? performance.now() / 1000 : 0), p = s.player;
       const k = 1 - Math.exp(-dt * 3);
@@ -215,9 +216,10 @@
       const target = [this.follow.x + (menu ? -45 : 0), 0, this.follow.z];
       this.eye = [target[0] + Math.sin(yaw) * distance, distance * (menu ? .65 : this.height), target[2] + Math.cos(yaw) * distance];
       this.vp = multiply(perspective(Math.PI / 4, this.canvas.width / this.canvas.height, 2, 6000), lookAt(this.eye, target));
-      gl.clearColor(...w.palette.sky,1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.useProgram(this.program);
-      gl.uniformMatrix4fv(this.u.VP, false, this.vp); gl.uniform1f(this.u.Time, t); gl.uniform3fv(this.u.Eye, this.eye); gl.uniform4fv(this.u.Islands,new Float32Array([...w.islands.flatMap(i=>{const p=C.landOutline(i),xs=p.map(p=>p.x),zs=p.map(p=>p.z),x0=Math.min(...xs),x1=Math.max(...xs),z0=Math.min(...zs),z1=Math.max(...zs);return[(x0+x1)/2,(z0+z1)/2,(x1-x0)/2,(z1-z0)/2];}),...Array((12-w.islands.length)*4).fill(0)]));gl.uniform3fv(this.u.Deep,w.palette.deep);gl.uniform3fv(this.u.Shallow,w.palette.shallow);gl.uniform3fv(this.u.Sky,w.palette.sky);
-      this.draw(this.water, identity(), 1, 1); this.draw(this.land);
+      const sky=w.palette.sky.map(v=>v*(1-storm*.38));
+      gl.clearColor(...sky,1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.useProgram(this.program);
+      gl.uniformMatrix4fv(this.u.VP, false, this.vp); gl.uniform1f(this.u.Time, t); gl.uniform3fv(this.u.Eye, this.eye); gl.uniform4fv(this.u.Islands,new Float32Array([...w.islands.flatMap(i=>{const p=C.landOutline(i),xs=p.map(p=>p.x),zs=p.map(p=>p.z),x0=Math.min(...xs),x1=Math.max(...xs),z0=Math.min(...zs),z1=Math.max(...zs);return[(x0+x1)/2,(z0+z1)/2,(x1-x0)/2,(z1-z0)/2];}),...Array((12-w.islands.length)*4).fill(0)]));gl.uniform3fv(this.u.Deep,w.palette.deep);gl.uniform3fv(this.u.Shallow,w.palette.shallow);gl.uniform3fv(this.u.Sky,sky);gl.uniform4fv(this.u.Sea,[Math.sin(s.wind.angle),Math.cos(s.wind.angle),localWind.strength,storm]);
+      this.draw(this.water,identity(),1,1);this.draw(this.land,identity(),1,0,[1-storm*.25,1-storm*.21,1-storm*.17]);
       // Port mooring circles and the golden mission marker.
       for(const i of w.islands)if(i.port){const p=C.harborPoint(i,25);this.draw(this.ring,model(p.x,0,p.z,t*.035,1.6),.48);}
       const objective = C.objectivePosition(s);
@@ -230,12 +232,12 @@
       for (const v of allShips) {
         if (Math.hypot(v.x - this.follow.x, v.z - this.follow.z) > 1600) continue;
         const faction = v.id === 'player' ? 'player' : v.friendly ? 'friendly' : 'enemy';
-        const roll = Math.sin(t * 1.3 + v.x) * .025;
+        const chop=C.windAt(s,v).hazard,roll=Math.sin(t*1.7+v.x*.04)*(.025+chop*.065);
         const tint = !menu && v.id === 'player' && v.invulnerable > 0 && Math.sin(t * 8) > .6 ? [1.3, 1.3, 1.15] : [1, 1, 1];
         const fittings=v.id==='player'?{...v.upgrades,livery:v.livery,rig:w.rig,flag:C.FACTIONS[v.patron]?.color}:{};
         const key = `${v.class}-${faction}${v.sail ? '' : '-reef'}${v.sails < 40 ? '-torn' : ''}${v.id==='player'?`-${v.livery}-${fittings.copper||0}-${fittings.hull||0}-${w.rig}-${v.patron}`:''}`;
         if (!this.shipMeshes[key]) this.shipMeshes[key] = this.upload(shipGeometry(v.class, faction, !v.sail, v.sails < 40, fittings));
-        this.draw(this.shipMeshes[key], model(v.x, .35 + Math.sin(t * 1.4 + v.z) * .55, v.z, v.angle, menu && v.id === 'player' ? 1.8 : 1, roll), 1, 0, tint);
+        this.draw(this.shipMeshes[key], model(v.x,.65+C.seaHeight(s,v,t), v.z, v.angle, menu && v.id === 'player' ? 1.8 : 1, roll), 1, 0, tint);
         if (v.hull < C.maxHull(v) * .4 && Math.random() < dt * 5) this.particles.push({ x: v.x, y: 5, z: v.z, vx: 3, vz: -1, vy: 6, age: 0, life: 2, type: 'smoke' });
       }
       for (const shot of s.shots) if (shot.age >= 0) {
@@ -243,6 +245,30 @@
         this.draw(this.ball, model(shot.x, y, shot.z, 0, shot.ammo === 'chain' ? 1 : .75));
       }
       const fx = new Geometry();
+      // Short, breaking wave ribbons appear in patches and travel with the wind.
+      const dx=Math.sin(s.wind.angle),dz=Math.cos(s.wind.angle),rough=clampSea((localWind.strength-6)/24+storm*.5);
+      const gx=Math.floor(p.x/95),gz=Math.floor(p.z/95);
+      for(let ix=-5;ix<=5;ix++)for(let iz=-5;iz<=5;iz++){
+        const x=(gx+ix)*95,z=(gz+iz)*95,seed=Math.sin((gx+ix)*127.1+(gz+iz)*311.7)*43758.5453,f=seed-Math.floor(seed);
+        if(f>.22+rough*.38)continue;
+        const age=((t+f*37)%11)/11,fade=Math.sin(Math.PI*clampSea((age-.2)/.55));if(age<.2||age>.75)continue;
+        const cx=x+dx*age*65,cz=z+dz*age*65;if(C.islands(s).some(i=>C.landDistance({x:cx,z:cz},i)<12))continue;
+        const span=20+f*34,color=w.palette.deep.map((v,j)=>v*(1-fade*.55)+[.75,.85,.79][j]*fade*.55);
+        for(let j=0;j<9;j++){
+          const a=(j/9-.5)*span,b=((j+1)/9-.5)*span;
+          const point=(u,offset)=>{const bend=Math.cos(u/span*Math.PI)*3,xx=cx+dz*u+dx*(bend+offset),zz=cz-dx*u+dz*(bend+offset);return[xx,.65+C.seaHeight(s,{x:xx,z:zz},t)+fade*(.3+rough),zz];};
+          fx.quad(point(a,0),point(b,0),point(b,1+rough*1.7),point(a,1+rough*1.7),color);
+        }
+      }
+      for(const h of s.hazards||[])if(C.dist(h,p)<1100){
+        if(h.kind==='reef'){
+
+          for(let j=0;j<6;j++){const a=j*2.4+h.seed,r=h.r*(.15+j*.1),x=h.x+Math.sin(a)*r,z=h.z+Math.cos(a)*r;fx.sphere(x,-1,z,4+j%3,0x626f63,[1.6,.8,1],6,3);const phase=(t*.2+j*.17)%1,rr=7+phase*9;for(let k=0;k<10;k++){const a=k/10*C.TAU,b=(k+.7)/10*C.TAU;fx.quad([x+Math.sin(a)*rr,.6,z+Math.cos(a)*rr],[x+Math.sin(b)*rr,.6,z+Math.cos(b)*rr],[x+Math.sin(b)*(rr+1),.6,z+Math.cos(b)*(rr+1)],[x+Math.sin(a)*(rr+1),.6,z+Math.cos(a)*(rr+1)],0x96bfb0);}}
+        }else for(let j=0;j<9;j++){
+          const f=(t*.1+j/9)%1,a=j*2.4,x=h.x+Math.sin(a)*h.r*.65+Math.sin(h.angle)*(f-.5)*45,z=h.z+Math.cos(a)*h.r*.65+Math.cos(h.angle)*(f-.5)*45,d=Math.sin(h.angle),e=Math.cos(h.angle),y=.8+C.seaHeight(s,{x,z},t);
+          fx.tri([x+d*8,y,z+e*8],[x-d*5+e*3,y,z-e*5-d*3],[x-d*5-e*3,y,z-e*5+d*3],0x6da49a);
+        }
+      }
       if(s.gate&&Math.hypot(s.gate.x-p.x,s.gate.z-p.z)<1500){
         const q=s.gate;
         for(let ring=0;ring<9;ring++)for(let j=0;j<56;j++){
@@ -279,15 +305,16 @@
       }
       this.particles = this.particles.filter(p => p.age < p.life).slice(-350);
       // Rain streaks exist in world space, underneath the cloud canopy.
-      for (const w of s.weather) if (Math.hypot(w.x - p.x, w.z - p.z) < 1000) {
-        for (let i = 0; i < 100; i++) {
+      for(const w of s.weather)if(Math.hypot(w.x-p.x,w.z-p.z)<1000){
+        const power=C.stormPower(w);
+        for(let i=0;i<Math.floor(125*power);i++){
           const a = i * 2.39996, r = Math.sqrt(i / 100) * w.r * .72, x = w.x + Math.sin(a) * r, z = w.z + Math.cos(a) * r, y = (i * 7.3 - t * 65) % 80 + 80;
           fx.beam([x, y % 80, z], [x - 1, y % 80 + 7, z], .18, 0xa7c5bd);
         }
       }
       gl.bindBuffer(gl.ARRAY_BUFFER, this.dynamic.buffer); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(fx.data), gl.DYNAMIC_DRAW); this.dynamic.count = fx.data.length / 9; this.draw(this.dynamic);
       gl.depthMask(false);
-      for (const w of s.weather) this.draw(this.cloud, model(w.x, 0, w.z, .2, w.r / 185), .54);
+      for(const w of s.weather){const power=C.stormPower(w),push=clampSea((w.r*1.4-C.dist(w,p))/w.r)*(w.r+140);/* Keep the nearby cloud bank beyond the ship so the camera can read the battle. */this.draw(this.cloud,model(w.x-Math.sin(yaw)*push,0,w.z-Math.cos(yaw)*push,w.angle||.2,w.r/240),.32*power,0,[1-power*.32,1-power*.28,1-power*.22]);}
       gl.depthMask(true);
     }
   }

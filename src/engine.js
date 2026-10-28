@@ -83,7 +83,7 @@
       let landing = index === route.length - 1 ? destination : pick(s, islands(s).filter(i => i.port));
       if (kind === 'escort' && landing.id === departure.id) landing = pick(s, islands(s).filter(i => i.port && i.id !== departure.id));
       const anchor = intro ? harborPoint(home,350,-120) : safePosition(s, island.x + island.r * 1.5, island.z + (random(s) - .5) * 180);
-      if (kind === 'chart' && random(s) > .45) { const w = pick(s, s.weather); anchor.x = w.x + 40; anchor.z = w.z + 30; }
+      if (kind === 'chart' && s.weather.length && random(s) > .45) { const w = pick(s, s.weather); anchor.x = w.x + 40; anchor.z = w.z + 30; }
       Object.assign(anchor,safePosition(s,anchor.x,anchor.z));
       const targetName = namedShip(s,kind==='escort'), relicType = pick(s, Object.keys(RELICS)), rarity = pick(s, ['common', 'rare', 'rare', 'legendary']);
       const relic = { id: `${objective}-relic`, type: relicType, name: `${pick(s, ['Aurelian', 'Opaline', 'Admiral’s', 'Jade', 'Starlit', 'Saffron', 'Obsidian'])} ${RELICS[relicType].name.toLowerCase()}`, rarity, label: RELICS[relicType].label };
@@ -148,9 +148,17 @@
   function resetSea(s,intro=false) {
     const w=world(s),b=bounds(s),home=portById(s,s.checkpoint);
     s.ships=[];s.loot=[];s.shots=[];s.effects=[];s.selected=null;s.waypoint=null;s.pendingRelic=null;s.escortLost=false;s.convoyRetry=0;s.progress=0;s.chapterSpawned=-1;s.legIndex=0;s.phase='sailing';s.time=0;
-    s.weather=[{x:-180+(random(s)-.5)*450,z:-350+(random(s)-.5)*300,r:190,seed:5},{x:b.x*.55,z:250+(random(s)-.5)*300,r:w.climate==='atlantic'?240:160,seed:12}].map(p=>({...p,...safePosition(s,p.x,p.z)}));
-    Object.assign(s.player,harborPoint(home,55));s.player.speed=0;s.player.invulnerable=8;s.player.reload=1;
+    Object.assign(s.player,harborPoint(home,55));s.player.speed=0;s.player.invulnerable=8;s.player.reload=1;s.player.coastCooldown=0;s.lastHazard=null;
     s.wind={angle:w.wind,strength:w.climate==='atlantic'?16:13};
+    s.contacts={};s.hazards=[];
+    s.atmosphere={seed:(s.seed^0xa3597f21)>>>0,nextFront:28,nextStorm:55,angle:w.wind,strength:s.wind.strength,kind:'Trade wind'};
+    // Hazards are renewed with encounters; they do not enlarge the captain save.
+    for(let j=0;j<6;j++){
+      const i=w.islands[(j*3+2)%w.islands.length],jitter=(skyRandom(s)-.5)*.6,q=safePosition(s,i.x+i.r*(1.6+jitter),i.z+(j%2?160:-160)+jitter*i.r*.7);
+      if(w.islands.some(i=>i.port&&dist(q,i.port)<210)||dist(q,s.player)<300)continue;
+      s.hazards.push({...q,id:`danger-${j}`,kind:j<4?'reef':'current',r:j<4?32+j*5:130,angle:w.wind+(j%2?1.2:-1.2),strength:3+j*.35,seed:j*17+9});
+    }
+    s.weather=[];spawnStorm(s,true);
     s.voyage=generateVoyage(s,'prize',home.id,intro);s.complete=!intro;
     if(intro){s.affiliation=s.voyage.patron;s.player.patron=s.affiliation;spawnChapter(s);}else generateOffers(s);
     for(let i=0;i<24;i++){const p=safePosition(s,(random(s)*2-1)*(b.x-120),(random(s)*2-1)*(b.z-100));s.loot.push({id:s.nextId++,...p,kind:i%4===0?'chest':'cargo',value:30+Math.floor(random(s)*50),bob:random(s)*TAU});}
@@ -179,12 +187,13 @@
     for(let pass=0;pass<30;pass++){
       let moved=false;
       for(const i of islands(s))if(landDistance(p,i)<36){const q=landInfo(p,i);p.x=q.x+q.nx*40;p.z=q.z+q.nz*40;moved=true;}
+      for(const h of s.hazards||[])if(h.kind==='reef'&&dist(p,h)<h.r+40){const a=bearing(h,p);p.x=h.x+Math.sin(a)*(h.r+42);p.z=h.z+Math.cos(a)*(h.r+42);moved=true;}
       p.x=clamp(p.x,-b.x+40,b.x-40);p.z=clamp(p.z,-b.z+40,b.z-40);
       if(!moved&&islands(s).every(i=>landDistance(p,i)>=30))return p;
     }
     // Overlapping mainland edges or the chart boundary can trap a local projection.
     // Search outward for the nearest navigable patch, rather than spawn on land.
-    for(let r=50;r<6000;r+=50)for(let j=0;j<32;j++){const a=j/32*TAU,q={x:clamp(p.x+Math.cos(a)*r,-b.x+40,b.x-40),z:clamp(p.z+Math.sin(a)*r,-b.z+40,b.z-40)};if(islands(s).every(i=>landDistance(q,i)>36))return q;}
+    for(let r=50;r<6000;r+=50)for(let j=0;j<32;j++){const a=j/32*TAU,q={x:clamp(p.x+Math.cos(a)*r,-b.x+40,b.x-40),z:clamp(p.z+Math.sin(a)*r,-b.z+40,b.z-40)};if(islands(s).every(i=>landDistance(q,i)>36)&&(s.hazards||[]).every(h=>h.kind!=='reef'||dist(q,h)>h.r+40))return q;}
     return p;
   }
 
@@ -229,10 +238,45 @@
       addShip(s, 'sloop', mid.x, mid.z, { name: namedShip(s), role:'ambush',home:mid,loot:140,faction:m.enemy });
     }
   }
-  function windAt(s, p) {
-    let gust = 0, hazard = 0;
-    for (const w of s.weather) { const q = 1 - dist(p, w) / w.r; gust = Math.max(gust, clamp(q + .15, 0, 1) * 8); hazard = Math.max(hazard, clamp((q - .37) / .63, 0, 1)); }
-    return { angle: s.wind.angle, strength: s.wind.strength + gust, hazard };
+  function skyRandom(s){const a=s.atmosphere;a.seed=(Math.imul(a.seed,1664525)+1013904223)>>>0;return a.seed/4294967296;}
+  function stormPower(w){if(w.age===undefined)return w.intensity??1;return (w.intensity??1)*clamp(w.age/16,0,1)*clamp((w.life-w.age)/24,0,1);}
+  function spawnStorm(s,initial=false){
+    const a=s.atmosphere,rand=()=>skyRandom(s),angle=s.wind.angle+(rand()-.5)*1.8,d=initial?950:650+rand()*350;
+    const origin=initial?{x:0,z:0}:s.player,q=safePosition(s,origin.x-Math.sin(angle)*d,origin.z-Math.cos(angle)*d);
+    const strong=!initial&&rand()>.5;
+    const cell={...q,id:`squall-${a.seed}`,r:strong?260+rand()*95:170+rand()*85,seed:rand()*1000,age:initial?28:0,life:initial?125:125+rand()*65,intensity:strong?1:.65,angle,drift:3.5+rand()*3,kind:strong?'Storm':'Squall'};
+    s.weather.push(cell);
+    if(!initial)event(s,'message',{text:`${strong?'Storm clouds':'A squall'} building offshore. Check the chart and reef before entering rough water.`,tone:'warning'});
+    return cell;
+  }
+  function updateWeather(s,dt){
+    const a=s.atmosphere;if(!a||a.disabled)return;
+    if(s.time>=a.nextFront){
+      const r=skyRandom(s);
+      a.kind=r<.18?'Lull':r<.7?'Fresh breeze':'Gale front';
+      a.strength=r<.18?5+skyRandom(s)*4:r<.7?11+skyRandom(s)*8:21+skyRandom(s)*5;
+      a.angle=world(s).wind+(skyRandom(s)-.5)*(r>.7?4.8:3.2);
+      a.nextFront=s.time+35+skyRandom(s)*40;
+      event(s,'message',{text:`${a.kind}: the wind is shifting toward ${Math.round(a.strength)} knots. Watch your heading.`,tone:r>.7?'warning':''});
+    }
+    s.wind.angle+=angleDiff(a.angle+Math.sin(s.time*.11)*.1,s.wind.angle)*(1-Math.exp(-dt*.075));
+    s.wind.strength+=(a.strength+Math.sin(s.time*.23)*1.5-s.wind.strength)*(1-Math.exp(-dt*.12));
+    if(s.time>=a.nextStorm){if(s.weather.length<3)spawnStorm(s);a.nextStorm=s.time+65+skyRandom(s)*60;}
+    for(const w of s.weather)if(w.age!==undefined){w.age+=dt;w.x+=Math.sin(w.angle)*w.drift*dt;w.z+=Math.cos(w.angle)*w.drift*dt;}
+    s.weather=s.weather.filter(w=>w.age===undefined||w.age<w.life);
+  }
+  function windAt(s,p){
+    let gust=0,hazard=0,shift=0;
+    for(const cell of s.weather){const q=1-dist(p,cell)/cell.r,power=stormPower(cell);gust=Math.max(gust,clamp(q+.15,0,1)*12*power);const local=clamp(q/.8,0,1)*power;if(local>hazard){hazard=local;shift=Math.sin(s.time*.13+cell.seed)*.6*local;}}
+    return {angle:s.wind.angle+shift,strength:clamp(s.wind.strength+gust,3,38),hazard};
+  }
+  function currentAt(s,p){let x=0,z=0;for(const h of s.hazards||[])if(h.kind==='current'){const q=clamp(1-dist(p,h)/h.r,0,1),strength=q*h.strength*(.75+.25*Math.sin(s.time*.1+h.seed));x+=Math.sin(h.angle)*strength;z+=Math.cos(h.angle)*strength;}return{x,z};}
+  function seaHeight(s,p,t=s.time){const wind=windAt(s,p),along=p.x*Math.sin(s.wind.angle)+p.z*Math.cos(s.wind.angle),amp=.35+wind.strength*.025+wind.hazard*1.1;return Math.sin(along*.043-t*1.7)*amp+Math.cos(p.x*.026-p.z*.031-t*.9)*amp*.45;}
+  function contactDamage(s,v,impact,label){
+    if(v.hull<=0||v.invulnerable>0)return;
+    const amount=Math.min(36,1.5+impact*impact*.025);v.hull-=amount;
+    event(s,'collision',{x:v.x,z:v.z,power:amount});
+    if(v.id==='player')event(s,'message',{text:`${label} · hull −${Math.ceil(amount)}. Reef and turn toward open water.`,tone:'warning'});
   }
   function polar(angle, wind, cls) {
     const d = Math.abs(angleDiff(angle, wind)); // zero = running with wind; pi = headwind
@@ -249,11 +293,23 @@
     const turn = spec.turn * (sail ? 1 : 1.42) * (1+(u.copper||0)*.14+(patron.turn||0)) * (.45 + .55 * v.sails / 100);
     v.angle = (v.angle - clamp(helm, -1, 1) * turn * dt) % TAU;
     const previous = { x: v.x, z: v.z };
+    const current=currentAt(s,v);
     v.x += Math.sin(v.angle) * v.speed * dt; v.z += Math.cos(v.angle) * v.speed * dt;
-    for (const i of islands(s)) {
-      if (landDistance(v,i)<spec.beam) {
-        const q=landInfo(v,i);v.x=q.x+q.nx*(spec.beam+1);v.z=q.z+q.nz*(spec.beam+1);v.speed*=.4;
-        if(v.id==='player'&&v.invulnerable<=0){v.hull-=3;v.invulnerable=1.5;event(s,'message',{text:'Shallows! Turn away from the coast.',tone:'warning'});}
+    v.x+=current.x*dt;v.z+=current.z*dt;
+    for(const i of islands(s)){
+      const hull=hullSegment(v),samples=[hull.a,v,hull.b],at=samples.reduce((a,b)=>landDistance(a,i)<landDistance(b,i)?a:b);
+      if(landDistance(at,i)<hull.r){
+        const q=landInfo(at,i),impact=Math.max(0,-(Math.sin(v.angle)*q.nx+Math.cos(v.angle)*q.nz)*v.speed);
+        v.x+=q.x+q.nx*(hull.r+1)-at.x;v.z+=q.z+q.nz*(hull.r+1)-at.z;v.speed*=.35;
+        if(s.time>=(v.coastCooldown||0)){contactDamage(s,v,impact,'Grounding');v.coastCooldown=s.time+.9;}
+      }
+    }
+    for(const h of s.hazards||[])if(h.kind==='reef'){
+      const hull=hullSegment(v),dx=hull.b.x-hull.a.x,dz=hull.b.z-hull.a.z,t=clamp(((h.x-hull.a.x)*dx+(h.z-hull.a.z)*dz)/(dx*dx+dz*dz),0,1),at={x:hull.a.x+dx*t,z:hull.a.z+dz*t},d=dist(at,h);
+      if(d<h.r+hull.r){
+        const nx=d>.001?(at.x-h.x)/d:Math.sin(v.angle+Math.PI),nz=d>.001?(at.z-h.z)/d:Math.cos(v.angle+Math.PI),impact=Math.max(0,-(Math.sin(v.angle)*nx+Math.cos(v.angle)*nz)*v.speed),push=h.r+hull.r-d+1;
+        v.x+=nx*push;v.z+=nz*push;v.speed*=.3;
+        if(s.time>=(v.coastCooldown||0)){contactDamage(s,v,impact,'Reef strike');v.coastCooldown=s.time+.9;}
       }
     }
 
@@ -265,10 +321,10 @@
     }
     v.invulnerable = Math.max(0, v.invulnerable - dt);
     v.reload = Math.min(1, v.reload + dt / (6.5 / (1 + (u.crew || 0) * .18)) * clamp(v.crew / spec.crew, .28, 1.2));
-    if (w.hazard > .05 && v.id === 'player') {
+    if(w.hazard>.05&&v.invulnerable<=0) {
       const shield = (u.weather ? .3 : 1) * (1-(v.relics?.storm||0))*(1-(patron.storm||0));
       v.sails = Math.max(7, v.sails - w.hazard * dt * 2.3 * shield * (sail ? 1 : .5));
-      v.hull -= w.hazard * dt * .75 * shield;
+      v.hull-=w.hazard*dt*.65*shield*(sail?1:.35);
     }
     v.previous = previous;
   }
@@ -311,8 +367,9 @@
     const t = d ? clamp(((p.x - a.x) * dx + (p.z - a.z) * dz) / d, 0, 1) : 0;
     return Math.hypot(a.x + dx * t - p.x, a.z + dz * t - p.z);
   }
-  function clearSeaLeg(s,a,b,padding=24){
+  function clearSeaLeg(s,a,b,padding=32){
     const cross=(a,b,c)=>(b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x);
+    if((s.hazards||[]).some(h=>h.kind==='reef'&&segmentDistance(a,b,h)<h.r+padding))return false;
     return islands(s).every(i=>{
       const c=coast(i);if(Math.max(a.x,b.x)<c.minX-padding||Math.min(a.x,b.x)>c.maxX+padding||Math.max(a.z,b.z)<c.minZ-padding||Math.min(a.z,b.z)>c.maxZ+padding)return true;
       if(landDistance(a,i)<padding||landDistance(b,i)<padding)return false;
@@ -321,16 +378,17 @@
   }
   function navigationRoute(s, from, to, cls = 'sloop') {
     const goal=safePosition(s,to.x,to.z),nodes=[{x:from.x,z:from.z},goal],b=bounds(s);
-    const navigable=p=>Math.abs(p.x)<b.x-5&&Math.abs(p.z)<b.z-10&&islands(s).every(i=>landDistance(p,i)>30);
+    const navigable=p=>Math.abs(p.x)<b.x-5&&Math.abs(p.z)<b.z-10&&islands(s).every(i=>landDistance(p,i)>30)&&(s.hazards||[]).every(h=>h.kind!=='reef'||dist(p,h)>h.r+30);
     // Offset actual coast vertices. The same shoreline drives visuals, collisions and routes.
     for(const i of islands(s)){
       const c=coast(i),v=c.points;
       for(let j=0;j<v.length;j++){
         const a=v[(j+v.length-1)%v.length],p=v[j],z=v[(j+1)%v.length];
         const d1=dist(a,p),d2=dist(p,z),nx=((p.z-a.z)/d1+(z.z-p.z)/d2)*c.sign,nz=(-(p.x-a.x)/d1-(z.x-p.x)/d2)*c.sign,len=Math.hypot(nx,nz)||1;
-        const q={x:p.x+nx/len*65,z:p.z+nz/len*65};if(navigable(q))nodes.push(q);
+        const q={x:p.x+nx/len*85,z:p.z+nz/len*85};if(navigable(q))nodes.push(q);
       }
     }
+    for(const h of s.hazards||[])if(h.kind==='reef')for(let j=0;j<12;j++){const a=j/12*TAU,q={x:h.x+Math.sin(a)*(h.r+65),z:h.z+Math.cos(a)*(h.r+65)};if(navigable(q))nodes.push(q);}
     for(let x=-b.x+180;x<b.x;x+=550)for(let z=-b.z+180;z<b.z;z+=550)if(navigable({x,z}))nodes.push({x,z});
     const costs = nodes.map(() => Infinity), previous = nodes.map(() => -1), used = new Set(); costs[0] = 0;
     for (let count = 0; count < nodes.length; count++) {
@@ -369,18 +427,18 @@
     s.player.crew = Math.max(8, s.player.crew - target.crew * .12);
     defeatShip(s, target, true); return true;
   }
-  function defeatShip(s, v, captured = false) {
+  function defeatShip(s, v, captured = false, credited=true) {
     if (v.removed) return;
     v.removed = true; v.hull = 0;
+    event(s,'sink',{x:v.x,z:v.z,captured});
     if (v.friendly) {
       if (v.role === 'escort') { s.chapterSpawned = -1; s.progress = 0; event(s, 'message', { text: `${v.name} was lost. Dock at any harbor to arrange another escort.`, tone: 'warning' }); s.escortLost = true; }
       return;
     }
-    s.stats[captured ? 'captured' : 'sunk']++; s.renown += captured ? 35 : 20;
+    if(credited){s.stats[captured?'captured':'sunk']++;s.renown+=captured?35:20;}
     const value = (v.loot || 120) * (captured ? 1.7 : 1);
     if (captured) { s.cargo += Math.round(value); event(s, 'message', { text: `${v.name} taken! Prize cargo worth ${Math.round(value)} gold.`, tone: 'good' }); }
     else { s.loot.push({ id: s.nextId++, x: v.x, z: v.z, kind: 'chest', value: Math.round(value), bob: 0 }); event(s, 'message', { text: `${v.name} struck her colors. Recover the floating cargo.`, tone: 'good' }); }
-    event(s, 'sink', { x: v.x, z: v.z, captured });
     if (v.mission === mission(s).objective) {
       if (mission(s).kind === 'convoy' && !captured) { s.convoyRetry = 18; event(s, 'message', { text: 'The prize sank. Another treasure convoy will arrive. Capture it with B.', tone: 'warning' }); }
       else { s.progress = mission(s).requirement; event(s, 'objective', { text: `Commission secured. Make port at ${islands(s).find(i => i.id === mission(s).port).name}.` }); }
@@ -399,9 +457,10 @@
       if (v.arrived) { v.speed *= .93; return; }
       if (dist(v, v.goal) < 60) { v.arrived = true; s.progress = 1; event(s, 'objective', { text: `${v.name} is safe. Dock at ${portById(s,mission(s).port).name} to claim your reward.` }); return; }
       if (dist(v, s.player) > 260) { v.speed *= .97; return; }
-      if (!v.route) v.route = navigationRoute(s, v, v.goal, 'galleon');
+      if(!v.route||Math.abs(angleDiff(s.wind.angle,v.routeWind??s.wind.angle))>.5){v.route=navigationRoute(s,v,v.goal,'galleon');v.routeWind=s.wind.angle;}
       while (v.route.length > 1 && dist(v, v.route[0]) < 48) v.route.shift();
-      desired = bearing(v, v.route[0] || v.goal); v.speed = Math.min(v.speed, 23);
+      desired=bearing(v,v.route[0]||v.goal);v.speed=Math.min(v.speed,23);
+      if(Math.abs(angleDiff(desired,v.angle))>.5||windAt(s,v).hazard>.2)full=0;
     } else if (v.friendly || !v.aggro) {
       const home = v.home || v;
       const goal = { x: home.x + Math.cos(s.time * .035 + v.id) * 100, z: home.z + Math.sin(s.time * .035 + v.id) * 90 };
@@ -421,6 +480,9 @@
     for (const i of islands(s)) if (v.role !== 'escort' && landDistance(ahead,i)<50) {
       const q=landInfo(ahead,i),away=Math.atan2(q.nx,q.nz); desired = away + (angleDiff(desired, away) > 0 ? 1 : -1) * .6;
     }
+    for(const h of s.hazards||[])if(h.kind==='reef'&&v.role!=='escort'&&dist(ahead,h)<h.r+45){const away=bearing(h,v);desired=away+(angleDiff(desired,away)>0?1:-1)*.6;}
+    // Avoid friendly hulls, while leaving deliberate player ramming possible.
+    for(const other of [s.player,...s.ships])if(other!==v&&other.hull>0&&(v.role!=='escort'||other.id!=='player'||dist(v,other)<35)&&dist(v,other)<65&&dist(v,other)>25&&Math.abs(angleDiff(bearing(v,other),desired))<.5)desired+=v.id%2?.65:-.65;
     sailShip(s, v, -clamp(angleDiff(desired, v.angle) * 2, -1, 1), full, dt);
     if (v.role === 'escort') v.speed = Math.min(v.speed, 23);
   }
@@ -436,16 +498,48 @@
     }
     s.loot = keep;
   }
+  function hullSegment(v){const c=CLASSES[v.class],r=c.beam*.5+1,length=c.length*.5-r,dx=Math.sin(v.angle)*length,dz=Math.cos(v.angle)*length;return{a:{x:v.x-dx,z:v.z-dz},b:{x:v.x+dx,z:v.z+dz},r};}
+  function hullContact(a,b){
+    const u=hullSegment(a),v=hullSegment(b),dx=u.b.x-u.a.x,dz=u.b.z-u.a.z,ex=v.b.x-v.a.x,ez=v.b.z-v.a.z,rx=u.a.x-v.a.x,rz=u.a.z-v.a.z;
+    const aa=dx*dx+dz*dz,ee=ex*ex+ez*ez,bb=dx*ex+dz*ez,cc=dx*rx+dz*rz,ff=ex*rx+ez*rz,den=aa*ee-bb*bb;
+    let t=den?clamp((bb*ff-cc*ee)/den,0,1):0,q=(bb*t+ff)/ee;
+    if(q<0){q=0;t=clamp(-cc/aa,0,1);}else if(q>1){q=1;t=clamp((bb-cc)/aa,0,1);}
+    const x=v.a.x+ex*q-(u.a.x+dx*t),z=v.a.z+ez*q-(u.a.z+dz*t),d=Math.hypot(x,z);if(d>=u.r+v.r)return null;
+    const fallback=bearing(a,b);return{nx:d>.001?x/d:Math.sin(fallback),nz:d>.001?z/d:Math.cos(fallback),overlap:u.r+v.r-d};
+  }
+  function collideShips(s){
+    const ships=[s.player,...s.ships].filter(v=>v.hull>0&&!v.removed);s.contacts||={};
+    for(let i=0;i<ships.length;i++)for(let j=i+1;j<ships.length;j++){
+      const a=ships[i],b=ships[j];if(a.hull<=0||b.hull<=0)continue;if(dist(a,b)>(CLASSES[a.class].length+CLASSES[b.class].length)*.6)continue;
+      const c=hullContact(a,b);if(!c)continue;
+      const ma=CLASSES[a.class].hull,mb=CLASSES[b.class].hull,impact=Math.max(0,(Math.sin(a.angle)*a.speed-Math.sin(b.angle)*b.speed)*c.nx+(Math.cos(a.angle)*a.speed-Math.cos(b.angle)*b.speed)*c.nz);
+      a.x-=c.nx*(c.overlap+.2)*mb/(ma+mb);a.z-=c.nz*(c.overlap+.2)*mb/(ma+mb);b.x+=c.nx*(c.overlap+.2)*ma/(ma+mb);b.z+=c.nz*(c.overlap+.2)*ma/(ma+mb);
+      const key=`${a.id}:${b.id}`;
+      if(impact>1.5&&s.time>=(s.contacts[key]||0)){
+        const power=2+impact*impact*.018;
+        if(a.invulnerable<=0)a.hull-=Math.min(maxHull(a)*.45,power*mb/(ma+mb)*2);
+        if(b.invulnerable<=0)b.hull-=Math.min(maxHull(b)*.45,power*ma/(ma+mb)*2);
+        s.contacts[key]=s.time+1.2;event(s,'collision',{x:(a.x+b.x)/2,z:(a.z+b.z)/2,power});
+        if(a.id==='player'||b.id==='player')event(s,'message',{text:'Collision! Both hulls take damage. Turn clear before making another pass.',tone:'warning'});
+      }
+      if(impact>0){a.speed*=.4;b.speed*=.4;}
+      for(const v of [a,b])if(v.hull<=0&&v.id!=='player')defeatShip(s,v,false,a.id==='player'||b.id==='player');
+    }
+    for(const key of Object.keys(s.contacts))if(s.contacts[key]<s.time-2)delete s.contacts[key];
+  }
   function step(s, input = {}, dt = 1 / 60) {
     s.events = [];
     if (s.phase !== 'sailing') return;
     dt = clamp(dt, 0, .05); s.time += dt;
-    s.wind.angle = world(s).wind + Math.sin(s.time / 90) * .25;
-    s.wind.strength = (world(s).climate==='atlantic'?16:13) + Math.sin(s.time / 42) * 2;
+    updateWeather(s,dt);
+    const danger=(s.hazards||[]).find(h=>dist(s.player,h)<h.r+70),key=danger?.id||null;
+    if(key!==s.lastHazard){s.lastHazard=key;if(danger)event(s,'message',{text:danger.kind==='reef'?'Breaking water ahead: submerged reef. Give the rocks a wide berth.':'A crosscurrent is pulling across your course. Correct your heading.',tone:'warning'});}
     if (input.sail !== undefined) s.player.sail = input.sail;
     if (input.ammo && AMMO[input.ammo]) s.player.ammo = input.ammo;
     sailShip(s, s.player, input.helm || 0, s.player.sail, dt);
     for (const v of s.ships) ai(s, v, dt);
+    collideShips(s);
+    for(const v of s.ships)if(v.hull<=0&&!v.removed)defeatShip(s,v,false,false);
     if (input.fire) fire(s, s.player, input.side || 0);
     if (input.board) board(s);
     if (input.dock) dock(s);
@@ -555,5 +649,5 @@
       return s;
     } catch { return null; }
   }
-  root.Corsair = { WORLDS,FACTIONS,world,islands,bounds,landOutline,landDistance,harborPoint,clearSeaLeg,portById,shipName,updateGate,travel,TAU,clamp,dist,bearing, angleDiff, CLASSES, AMMO, UPGRADES, ISLANDS, RELICS, THEMES, generateVoyage, generateOffers, acceptContract, create, step, fire, board, dock, leavePort, repair, repairCost, upgrade, upgradeCost, buyShip, maxHull, maxCrew, range, windAt, polar, nearestPort, boardingTarget, mission, objectivePosition, targetInBroadside, shotHeight, defeatShip, spawnChapter, navigationRoute, serialize, restore };
+  root.Corsair = { WORLDS,FACTIONS,world,islands,bounds,landOutline,landDistance,harborPoint,clearSeaLeg,updateWeather,spawnStorm,stormPower,currentAt,seaHeight,hullContact,collideShips,portById,shipName,updateGate,travel,TAU,clamp,dist,bearing, angleDiff, CLASSES, AMMO, UPGRADES, ISLANDS, RELICS, THEMES, generateVoyage, generateOffers, acceptContract, create, step, fire, board, dock, leavePort, repair, repairCost, upgrade, upgradeCost, buyShip, maxHull, maxCrew, range, windAt, polar, nearestPort, boardingTarget, mission, objectivePosition, targetInBroadside, shotHeight, defeatShip, spawnChapter, navigationRoute, serialize, restore };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

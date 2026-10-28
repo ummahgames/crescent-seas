@@ -47,7 +47,9 @@ Your ship, crew, condition, cargo, treasury, equipment, and progression cross to
 
 ## Sailing, combat, and ship improvements
 
-Wind angle, sail setting, hull condition, rigging damage, crew strength, fittings, and patron bonuses influence sailing. Reefing sacrifices speed for tighter handling and reduced storm exposure. Squalls bring stronger wind and damage to exposed ships.
+Wind angle, sail setting, hull condition, rigging damage, crew strength, fittings, and patron bonuses influence sailing. Seeded weather fronts bring lulls, fresh breezes, gale winds, and larger direction changes. Occasional storm cells build offshore, drift, and dissipate. Reefing sacrifices speed for tighter handling and reduced storm exposure. Moving squalls bring local gusts, rougher waves, rain, and damage to exposed ships.
+
+Charted reef clusters can damage hulls, while crosscurrents pull ships off course. Ship-to-ship collisions damage both vessels according to closing speed and relative size. Grounding and reef strikes affect player and AI ships. Whitecaps, intermittent breaking crests, and ship heave/roll make sea conditions visible.
 
 Cannons fire from the ship’s sides. Round shot emphasizes hull damage, chain shot disables rigging, and grape shot weakens crew. Visible projectile travel gives ships time to maneuver. Boarding requires a nearby, weakened opponent and a sufficiently strong crew; an intact prize is more valuable than a sinking.
 
@@ -96,4 +98,4 @@ Run the tests from this folder:
 node --test tests/engine.test.cjs
 ```
 
-Coverage includes sailing, projectile arcs, ammunition, boarding, delivery, purchases, storms, generated voyages, profile persistence, patron service, rare passages, coastline clearance, and all 100 regional harbor-to-harbor escort routes.
+Coverage includes sailing, projectile arcs, ammunition, boarding, delivery, purchases, storms, generated voyages, profile persistence, patron service, rare passages, changing weather, collision damage, reef strikes, current drift, coastline clearance, and all 100 regional harbor-to-harbor escort routes.
