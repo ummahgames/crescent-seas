@@ -136,7 +136,7 @@ Profiles save automatically during play, on purchases, at ports, when pausing, a
 | `src/art.js` | Original vector illustrations for equipment, vessels, tasks, and artifacts |
 | `src/game.js` | Input, menus, chart, audio, save scheduling, and simulation/render loop |
 | `tests/engine.test.cjs` | Node standard-library simulation and generation tests |
-| `README.md` | Original Pirates! research, with a link to this implementation |
+| `README.md` | Game overview, local setup, mechanics, and implementation notes |
 
 Run the tests from the workspace root:
 
@@ -146,4 +146,4 @@ node --test crescent-seas/tests/engine.test.cjs
 
 Tests cover wind and sail handling, firing geometry, projectile arcs, ammunition effects, capture, delivery, purchases, weather, recovery, repeated generated voyages, generation across 250 seeds, all harbor-to-harbor escort routes, artifact bonuses, and compact profile persistence. Additional tests cover all seven theaters, 100 regional escort routes, polygon coast clearance, safe harbor approaches, distinct patron service, earned whirlpool access, cross-era travel, and world-aware profile restoration. Browser QA covers WebGL startup, portrait and desktop layouts, patron and atlas screens, and the production renderer across all seven seas. `tests/visual.html` is a clearly labeled renderer/transition fixture that does not read or write captain saves.
 
-The game is an original compact interpretation of the researched sailing/combat ideas. Boarding resolves as a crew contest; it does not include a separate sword-fighting game. No original Pirates! code, models, audio, or textures are included.
+Crescent Seas uses its own engine, procedural models, vector illustrations, and synthesized audio. Boarding resolves as a crew contest; it does not include a separate sword-fighting game.
