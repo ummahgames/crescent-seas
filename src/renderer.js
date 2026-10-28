@@ -86,7 +86,9 @@
     for (const [z, h] of masts) {
       g.cone(0, 6, z, .6, h, 0x59452f, 6, .28);
       const widths = cls === 'sloop' ? [b * 1.5, b * 1.15] : [b * 1.65, b * 1.3];
-      for (let j = 0; j < 2; j++) {
+      if(fittings.rig==='lateen'||fittings.rig==='galley'){
+        const y=6+h*.91;g.beam([-b*.7,y,z-2],[b*.9,10,z+l*.21],.4,dark);if(!reef){g.tri([-b*.7,y-.7,z-1.5],[b*.9,11,z+l*.21],[-b*.6,10,z+l*.21],sail);if(!torn)g.tri([-b*.7,y-.7,z-1.5],[-b*.6,10,z+l*.21],[-b*.72,y*.6,z+2],sail);}
+      }else for (let j = 0; j < 2; j++) {
         const top = 6 + h * (.91 - j * .38), height = h * .34 * (reef ? .27 : 1), width = widths[j];
         g.beam([-width / 2 - .6, top, z], [width / 2 + .6, top, z], .4, dark);
         const columns = 6, rows = 3;
@@ -95,61 +97,65 @@
         if (faction === 'enemy') g.box(0, top - height * .65, z + 2.9, .6, height * .35, .04, 0xd7ad78);
       }
       for (const sign of [-1, 1]) { g.beam([0, h * .8, z], [b * sign * .5, 6, z - l * .13], .12, 0x554c3e); g.beam([0, h + 5, z], [b * sign * .42, 6, z + l * .2], .1, 0x554c3e); }
-      g.quad([0, h + 5, z], [0, h + 8.5, z], [7, h + 7, z], [5, h + 4.5, z], faction === 'enemy' ? 0x252d2c : 0x1f6967);
+      g.quad([0, h + 5, z], [0, h + 8.5, z], [7, h + 7, z], [5, h + 4.5, z], faction==='enemy'?0x612e2b:fittings.flag?parseInt(fittings.flag.slice(1),16):0x1f6967);
     }
+    if(fittings.rig==='galley')for(const sign of [-1,1])for(let i=0;i<10;i++)g.beam([sign*b*.4,3,-l*.3+i*l*.065],[sign*(b*.6+9),.2,-l*.3+i*l*.065-4],.25,0xb59b65);
     g.beam([0, 6, l * .5], [0, 12, l * .85], .45, trim);
     if (!reef) g.tri([0, 12, l * .8], [0, 29, l * .27], [0, 10, l * .26], sail);
     g.box(0, 7, -l * .23, 1.3, 1.5, 1.3, 0x855e37);
     return g;
   }
-  function terrainGeometry() {
+  function terrainGeometry(w) {
     const g = new Geometry();
     let seed = 412;
     const rand = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
-    for (const island of C.ISLANDS) {
-      const n = 30, radii = [0, .22, .48, .7, .89, 1, 1.13], heights = [1, .8, .48, .19, .055, .007, -.025];
-      const colors = [0x61754a, 0x6b814e, 0x7d9054, 0x8c9f61, 0xaabb7c, 0xdfcc91, 0xdecf9d];
-      const noise = Array.from({ length: n }, () => .91 + rand() * .18);
-      const point = (r, a) => { const angle = a / n * C.TAU, j = a % n; return [island.x + Math.cos(angle) * island.r * radii[r] * noise[j], island.h * heights[r] + (r > 0 && r < 4 ? Math.sin(a * 2.4) * 3 : 0), island.z + Math.sin(angle) * island.r * radii[r] * noise[j]]; };
+    for (const island of w.islands) {
+      const edge=C.landOutline(island),n=edge.length,radii=[0,.22,.48,.7,.89,1,1.08],heights=island.atoll?[-.1,-.08,-.03,.14,.15,.007,-.025]:[1,.8,.48,.19,.055,.007,-.025];
+      const colors=w.palette.land;
+      const point = (r,a) => {const p=edge[a%n];return [island.x+(p.x-island.x)*radii[r],island.h*heights[r]+(r>0&&r<4&&!island.atoll?Math.sin(a*2.4)*3:0),island.z+(p.z-island.z)*radii[r]];};
+      const plantPoint=()=>{const k=Math.floor(rand()*n),a=edge[k],b=edge[(k+1)%n],t=rand(),r=island.atoll?.76+rand()*.1:.43+rand()*.39;return{x:island.x+((a.x+(b.x-a.x)*t)-island.x)*r,z:island.z+((a.z+(b.z-a.z)*t)-island.z)*r,y:island.atoll?island.h*.14+2:island.h*Math.max(.04,(1-r)**1.55)+3};};
       for (let j = 0; j < radii.length - 1; j++) for (let a = 0; a < n; a++) g.quad(point(j, a), point(j + 1, a), point(j + 1, a + 1), point(j, a + 1), colors[j]);
       // Palm silhouettes: bent trunk and five broad, angular fronds.
-      for (let j = 0; j < 20; j++) {
-        const a = rand() * C.TAU, r = (.43 + rand() * .39) * island.r;
-        const x = island.x + Math.cos(a) * r, z = island.z + Math.sin(a) * r;
-        const y = island.h * Math.max(.04, (1 - r / island.r) ** 1.55) + 3;
+      for (let j = 0; j < (w.climate==='desert'?4:20); j++) {
+        const a=rand()*C.TAU,{x,y,z}=plantPoint();
         const h = 12 + rand() * 10;
         g.beam([x, y, z], [x + 2, y + h, z - 1], 1.3, 0x786145);
+        if(w.climate==='med'){g.cone(x,y+h*.5,z,5,h*.8,0x4d654d,7);continue;}
         for (let k = 0; k < 5; k++) { const b = k / 5 * C.TAU + a, dx = Math.cos(b), dz = Math.sin(b); g.tri([x + 2, y + h, z - 1], [x + 2 + dx * 6 - dz * 2.5, y + h + 1, z - 1 + dz * 6 + dx * 2.5], [x + 2 + dx * 14, y + h - 3, z - 1 + dz * 14], k % 2 ? 0x476747 : 0x557b49); }
       }
       for (let j = 0; j < 9; j++) {
-        const a = rand() * C.TAU, r = island.r * (.5 + rand() * .37);
-        g.sphere(island.x + Math.cos(a) * r, 4 + island.h * Math.max(.02, (1 - r / island.r) ** 1.9), island.z + Math.sin(a) * r, 8 + rand() * 12, 0x899180, [1, 1.25, .9], 6, 3);
+        const {x,y,z}=plantPoint();g.sphere(x,y,z,8+rand()*12,0x899180,[1,1.25,.9],6,3);
       }
       if (island.port) {
-        const p = island.port, shore = island.x + island.r * .78;
+        const portStart=g.data.length,side=island.portSide,rotation=side==='west'?Math.PI:side==='north'?Math.PI/2:0;
+        const p={x:island.x+Math.abs(island.shoreOffset)+55,z:island.z},shore=island.x+Math.abs(island.shoreOffset)-12;
         g.box((p.x + shore) / 2, 1.5, p.z, p.x - shore + 10, 2, 13, 0x9c7950);
         for (let j = 0; j < 5; j++) { g.box(p.x - j * 13, -2, p.z - 6, 1, 5, 1, 0x665844); g.box(p.x - j * 13, -2, p.z + 6, 1, 5, 1, 0x665844); }
         for (let j = 0; j < 11; j++) {
-          const x = island.x + island.r * (.49 + rand() * .24), z = island.z + (rand() - .5) * island.r;
+          const x=shore-island.r*(.06+rand()*.18),z=island.z+(rand()-.5)*island.r*.6;
           const y = island.h * .075 + 3, h = 7 + rand() * 8;
           g.box(x, y, z, 10 + rand() * 7, h, 12, j % 3 ? 0xe1cd9f : 0xbdc2ac);
-          g.cone(x, y + h, z, 11, 5, j % 2 ? 0x9a5b43 : 0x7c5c47, 4);
+          const style=island.style||w.style;
+          if(['malabar','gujarat','aceh'].includes(style))g.cone(x,y+h,z,11,style==='aceh'?9:5,style==='aceh'?0x66543c:0x9a5b43,4);
+          else if(j%4===0)g.sphere(x,y+h,z,6,w.climate==='desert'?0xc4b58c:0x8aa397,[1,1.2,1],10,5);
+          else g.box(x,y+h,z,13,.8,14,0xd5d2b0);
           g.box(x + 4, y + 3, z + 6.1, 2, 3, .1, 0x496467);
         }
-        const tx = island.x + island.r * .75, tz = island.z - 35;
+        const tx=shore-15,tz=island.z-35;
         g.cone(tx, 2, tz, 8, 30, 0xd7d0af, 10, 6);
         g.cone(tx, 32, tz, 8, 6, 0x5b6d62, 8);
         g.box(tx, 26, tz + 6, 4, 4, .5, 0xedcd81);
-        if (island.id === 'bastion') {
+        if(['ottoman','algiers','tunis','morocco','mamluk'].includes(island.patron)) {
           g.box(island.x + 20, island.h * .7, island.z, 48, 20, 40, 0x989a83);
           for (const x of [-20, 20]) for (const z of [-16, 16]) { g.cone(island.x + 20 + x, island.h * .7 + 12, island.z + z, 8, 19, 0xafad93, 8, 8); g.cone(island.x + 20 + x, island.h * .7 + 31, island.z + z, 10, 10, 0x6e6956, 8); }
         }
+        if(rotation)for(let j=portStart;j<g.data.length;j+=9){const c=Math.cos(rotation),sn=Math.sin(rotation),x=g.data[j]-island.x,z=g.data[j+2]-island.z,nx=g.data[j+3],nz=g.data[j+5];g.data[j]=island.x+c*x+sn*z;g.data[j+2]=island.z-sn*x+c*z;g.data[j+3]=c*nx+sn*nz;g.data[j+5]=-sn*nx+c*nz;}
       }
     }
     return g;
   }
   const vertex = `precision mediump float;attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uVP;uniform mat4 uModel;uniform float uTime;uniform float uWater;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;void main(){vec4 world=uModel*vec4(aPosition,1.);if(uWater>.5)world.y+=sin(world.x*.025+uTime*.75)*.48+cos(world.z*.037-uTime*.9)*.35;vWorld=world.xyz;vNormal=mat3(uModel)*aNormal;vColor=aColor;gl_Position=uVP*world;}`;
-  const fragment = `precision mediump float;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;uniform float uTime;uniform float uWater;uniform float uAlpha;uniform vec3 uEye;uniform vec3 uIslands[8];uniform vec3 uTint;void main(){vec3 color;vec3 light=normalize(vec3(-.55,1.,.35));if(uWater>.5){float depth=1.;for(int i=0;i<8;i++){float d=length(vWorld.xz-uIslands[i].xy)/uIslands[i].z;depth=min(depth,smoothstep(.85,1.95,d));}float waves=sin(vWorld.x*.105+sin(vWorld.z*.09+uTime*.3)*1.4+uTime*.9)*sin(vWorld.z*.13-uTime*.65);float ripples=sin(vWorld.x*.28+vWorld.z*.17+uTime*1.2)*.5+.5;vec3 n=normalize(vec3(cos(vWorld.x*.075+uTime)*.13,1.,sin(vWorld.z*.08-uTime)*.17));vec3 view=normalize(uEye-vWorld);float spec=pow(max(dot(reflect(-light,n),view),0.),60.);color=mix(vec3(.17,.66,.61),vec3(.045,.36,.43),depth);color+=waves*.016+smoothstep(.76,1.,ripples)*.019+spec*vec3(.34,.38,.29);float shore=(1.-smoothstep(0.,.13,abs(depth-.16)));color+=shore*(.07+.03*sin(uTime+vWorld.x*.2));}else{float diffuse=max(dot(normalize(vNormal),light),0.);diffuse=floor(diffuse*5.)/5.;color=vColor*(.57+diffuse*.46)*uTint;}float fog=1.-exp(-pow(length(vWorld-uEye)/1750.,2.));color=mix(color,vec3(.66,.78,.77),min(fog,.9));gl_FragColor=vec4(color,uAlpha);}`;
+  const fragment = `precision mediump float;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;uniform float uTime;uniform float uWater;uniform float uAlpha;uniform vec3 uEye;uniform vec4 uIslands[12];uniform vec3 uTint;uniform vec3 uDeep;uniform vec3 uShallow;uniform vec3 uSky;void main(){vec3 color;vec3 light=normalize(vec3(-.55,1.,.35));if(uWater>.5){float depth=1.;for(int i=0;i<12;i++){if(uIslands[i].z>.1){float d=length((vWorld.xz-uIslands[i].xy)/uIslands[i].zw);depth=min(depth,smoothstep(.85,1.95,d));}}float waves=sin(vWorld.x*.105+sin(vWorld.z*.09+uTime*.3)*1.4+uTime*.9)*sin(vWorld.z*.13-uTime*.65);float ripples=sin(vWorld.x*.28+vWorld.z*.17+uTime*1.2)*.5+.5;vec3 n=normalize(vec3(cos(vWorld.x*.075+uTime)*.13,1.,sin(vWorld.z*.08-uTime)*.17));vec3 view=normalize(uEye-vWorld);float spec=pow(max(dot(reflect(-light,n),view),0.),60.);color=mix(uShallow,uDeep,depth);color+=waves*.016+smoothstep(.76,1.,ripples)*.019+spec*vec3(.34,.38,.29);float shore=(1.-smoothstep(0.,.13,abs(depth-.16)));color+=shore*(.07+.03*sin(uTime+vWorld.x*.2));}else{float diffuse=max(dot(normalize(vNormal),light),0.);diffuse=floor(diffuse*5.)/5.;color=vColor*(.57+diffuse*.46)*uTint;}float fog=1.-exp(-pow(length(vWorld-uEye)/1750.,2.));color=mix(color,uSky,min(fog,.9));gl_FragColor=vec4(color,uAlpha);}`;
   class Renderer {
     constructor(canvas) {
       this.canvas = canvas; this.gl = canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -159,11 +165,11 @@
       this.program = gl.createProgram(); gl.attachShader(this.program, shader(gl.VERTEX_SHADER, vertex)); gl.attachShader(this.program, shader(gl.FRAGMENT_SHADER, fragment)); gl.linkProgram(this.program);
       if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(this.program));
       gl.useProgram(this.program); this.u = {};
-      for (const name of ['VP', 'Model', 'Time', 'Water', 'Alpha', 'Eye', 'Islands', 'Tint']) this.u[name] = gl.getUniformLocation(this.program, `u${name}${name === 'Islands' ? '[0]' : ''}`);
+      for (const name of ['VP', 'Model', 'Time', 'Water', 'Alpha', 'Eye','Islands','Tint','Deep','Shallow','Sky']) this.u[name] = gl.getUniformLocation(this.program, `u${name}${name === 'Islands' ? '[0]' : ''}`);
       this.attributes = ['Position', 'Normal', 'Color'].map(n => gl.getAttribLocation(this.program, `a${n}`));
       gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      this.land = this.upload(terrainGeometry());
-      const water = new Geometry(), size = 3200, n = 100;
+      this.worldId=null;this.land=null;
+      const water = new Geometry(), size = 8000, n = 140;
       for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const x = (i / n - .5) * size, z = (j / n - .5) * size, d = size / n; water.quad([x, -1, z], [x + d, -1, z], [x + d, -1, z + d], [x, -1, z + d], 0x167d86); }
       this.water = this.upload(water); this.shipMeshes = {};
       for (const cls of Object.keys(C.CLASSES)) for (const faction of ['player', 'enemy', 'friendly']) this.shipMeshes[`${cls}-${faction}`] = this.upload(shipGeometry(cls, faction));
@@ -197,6 +203,8 @@
       return { x: (nx * .5 + .5) * this.canvas.clientWidth, y: (-ny * .5 + .5) * this.canvas.clientHeight };
     }
     frame(s, dt, menu = false) {
+      const w=C.world(s);
+      if(this.worldId!==s.worldId){if(this.land)this.gl.deleteBuffer(this.land.buffer);this.land=this.upload(terrainGeometry(w));this.worldId=s.worldId;this.follow={x:s.player.x,z:s.player.z};this.wakes=[];this.particles=[];}
       const gl = this.gl, t = s.time + (menu ? performance.now() / 1000 : 0), p = s.player;
       const k = 1 - Math.exp(-dt * 3);
       const ahead = menu ? 12 : 35;
@@ -206,12 +214,12 @@
       const distance = menu ? 205 : this.distance;
       const target = [this.follow.x + (menu ? -45 : 0), 0, this.follow.z];
       this.eye = [target[0] + Math.sin(yaw) * distance, distance * (menu ? .65 : this.height), target[2] + Math.cos(yaw) * distance];
-      this.vp = multiply(perspective(Math.PI / 4, this.canvas.width / this.canvas.height, 2, 3500), lookAt(this.eye, target));
-      gl.clearColor(.66, .78, .77, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.useProgram(this.program);
-      gl.uniformMatrix4fv(this.u.VP, false, this.vp); gl.uniform1f(this.u.Time, t); gl.uniform3fv(this.u.Eye, this.eye); gl.uniform3fv(this.u.Islands, new Float32Array(C.ISLANDS.flatMap(i => [i.x, i.z, i.r])));
+      this.vp = multiply(perspective(Math.PI / 4, this.canvas.width / this.canvas.height, 2, 6000), lookAt(this.eye, target));
+      gl.clearColor(...w.palette.sky,1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.useProgram(this.program);
+      gl.uniformMatrix4fv(this.u.VP, false, this.vp); gl.uniform1f(this.u.Time, t); gl.uniform3fv(this.u.Eye, this.eye); gl.uniform4fv(this.u.Islands,new Float32Array([...w.islands.flatMap(i=>{const p=C.landOutline(i),xs=p.map(p=>p.x),zs=p.map(p=>p.z),x0=Math.min(...xs),x1=Math.max(...xs),z0=Math.min(...zs),z1=Math.max(...zs);return[(x0+x1)/2,(z0+z1)/2,(x1-x0)/2,(z1-z0)/2];}),...Array((12-w.islands.length)*4).fill(0)]));gl.uniform3fv(this.u.Deep,w.palette.deep);gl.uniform3fv(this.u.Shallow,w.palette.shallow);gl.uniform3fv(this.u.Sky,w.palette.sky);
       this.draw(this.water, identity(), 1, 1); this.draw(this.land);
       // Port mooring circles and the golden mission marker.
-      for (const i of C.ISLANDS) if (i.port) this.draw(this.ring, model(i.port.x + 25, 0, i.port.z, t * .035, 1.6), .48);
+      for(const i of w.islands)if(i.port){const p=C.harborPoint(i,25);this.draw(this.ring,model(p.x,0,p.z,t*.035,1.6),.48);}
       const objective = C.objectivePosition(s);
       if (objective) { this.draw(this.ring, model(objective.x, .25, objective.z, -t * .2, .8 + Math.sin(t * 2) * .04), .85); }
       for (const l of s.loot) if (Math.hypot(l.x - p.x, l.z - p.z) < 1100) {
@@ -223,9 +231,9 @@
         if (Math.hypot(v.x - this.follow.x, v.z - this.follow.z) > 1600) continue;
         const faction = v.id === 'player' ? 'player' : v.friendly ? 'friendly' : 'enemy';
         const roll = Math.sin(t * 1.3 + v.x) * .025;
-        const tint = v.id === 'player' && v.invulnerable > 0 && Math.sin(t * 8) > .6 ? [1.3, 1.3, 1.15] : [1, 1, 1];
-        const fittings=v.id==='player'?{...v.upgrades,livery:v.livery}:{};
-        const key = `${v.class}-${faction}${v.sail ? '' : '-reef'}${v.sails < 40 ? '-torn' : ''}${v.id==='player'?`-${v.livery}-${fittings.copper||0}-${fittings.hull||0}`:''}`;
+        const tint = !menu && v.id === 'player' && v.invulnerable > 0 && Math.sin(t * 8) > .6 ? [1.3, 1.3, 1.15] : [1, 1, 1];
+        const fittings=v.id==='player'?{...v.upgrades,livery:v.livery,rig:w.rig,flag:C.FACTIONS[v.patron]?.color}:{};
+        const key = `${v.class}-${faction}${v.sail ? '' : '-reef'}${v.sails < 40 ? '-torn' : ''}${v.id==='player'?`-${v.livery}-${fittings.copper||0}-${fittings.hull||0}-${w.rig}-${v.patron}`:''}`;
         if (!this.shipMeshes[key]) this.shipMeshes[key] = this.upload(shipGeometry(v.class, faction, !v.sail, v.sails < 40, fittings));
         this.draw(this.shipMeshes[key], model(v.x, .35 + Math.sin(t * 1.4 + v.z) * .55, v.z, v.angle, menu && v.id === 'player' ? 1.8 : 1, roll), 1, 0, tint);
         if (v.hull < C.maxHull(v) * .4 && Math.random() < dt * 5) this.particles.push({ x: v.x, y: 5, z: v.z, vx: 3, vz: -1, vy: 6, age: 0, life: 2, type: 'smoke' });
@@ -235,6 +243,22 @@
         this.draw(this.ball, model(shot.x, y, shot.z, 0, shot.ammo === 'chain' ? 1 : .75));
       }
       const fx = new Geometry();
+      if(s.gate&&Math.hypot(s.gate.x-p.x,s.gate.z-p.z)<1500){
+        const q=s.gate;
+        for(let ring=0;ring<9;ring++)for(let j=0;j<56;j++){
+          const r=ring*10,rr=r+10,a=j/56*C.TAU,b=(j+1)/56*C.TAU,f=ring/9;
+          const point=(radius,angle)=>[q.x+Math.sin(angle)*radius,.7+radius*.01,q.z+Math.cos(angle)*radius];
+          const color=w.palette.deep.map((v,i)=>v*(.35+f*.65)+(i===2?.025:0));
+          fx.quad(point(r,a),point(rr,a),point(rr,b),point(r,b),color);
+        }
+        for(let arm=0;arm<5;arm++)for(let j=0;j<90;j++){
+          const f=j/90,r=7+f*80,a=arm/5*C.TAU+f*8.5-t*.65,b=a+.075,rr=r+3.5+f*3;
+          const col=j%13===0?0xe3d8ac:arm%2?0x61a9b2:0x8ac6c2;
+          fx.quad([q.x+Math.sin(a)*r,1.8,q.z+Math.cos(a)*r],[q.x+Math.sin(b)*r,1.8,q.z+Math.cos(b)*r],[q.x+Math.sin(b)*rr,1.8,q.z+Math.cos(b)*rr],[q.x+Math.sin(a)*rr,1.8,q.z+Math.cos(a)*rr],col);
+        }
+        for(let j=0;j<18;j++){const a=j/18*C.TAU+t*.1,x=q.x+Math.sin(a)*87,z=q.z+Math.cos(a)*87,y=8+Math.sin(j+t*1.5)*3;fx.tri([x-1,y,z],[x+1,y,z],[x,y+5,z],0xe7d4a4);}
+      }
+
       if (!menu && t - this.lastWake > .12) {
         for (const v of allShips) if (v.speed > 3 && Math.hypot(v.x - p.x, v.z - p.z) < 700) this.wakes.push({ x: v.x - Math.sin(v.angle) * C.CLASSES[v.class].length * .45, z: v.z - Math.cos(v.angle) * C.CLASSES[v.class].length * .45, a: v.angle, age: 0, width: C.CLASSES[v.class].beam * .75 });
         this.lastWake = t;

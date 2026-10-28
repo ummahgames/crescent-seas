@@ -26,5 +26,10 @@
     chart: '<path d="m58 29 39-10 47 12 40-10-8 88-39 11-46-13-40 12Z" fill="#d3c495"/><path d="m97 19-6 88m53-76-7 89" stroke="#9b976e" fill="none"/><path d="m73 85 24-19 21 9 33-23" stroke="#947744" stroke-dasharray="5 5" fill="none" stroke-width="2"/><path d="m148 42 13 16m0-16-13 16" stroke="#a06147" stroke-width="3"/>',
     raider: '<path d="m71 97 99-68m-96 0 99 68" stroke="#d4cbaa" stroke-width="8"/><path d="m57 80 27 31m73-1 27-31" stroke="#b5975c" stroke-width="5"/><path d="m69 102-13 11m120-11 13 11" stroke="#8a6d43" stroke-width="8"/>'
   };
-  root.CorsairArt = { upgrade: id => frame(arts[id] || arts.sails, id), relic, ship, task: kind => kind === 'relic' ? relic('compass') : ['convoy', 'escort', 'flagship'].includes(kind) ? ship(kind === 'convoy' ? 'galleon' : 'brig', kind !== 'escort') : frame(icons[kind] || icons.chart, kind) };
+  function vessel(cls,rig){
+    if(!['lateen','galley'].includes(rig))return ship(cls);
+    const heavy=cls!=='sloop',masts=heavy?[83,137,171]:[107,158];
+    return frame(`<path d="M35 98q90 15 175-7l-22 26H57Z" fill="#4a6e60" stroke="#cfb77b" stroke-width="2"/>${masts.map((x,i)=>`<path d="M${x} ${18+i*7}v81m-22-${68-i*7} 57 66" stroke="#b69a62" stroke-width="2"/><path d="m${x-20} ${32+i*7} 52 62h-56Z" fill="${i%2?'#d2d2b0':'#ecdbac'}"/>`).join('')}${rig==='galley'?Array.from({length:12},(_,i)=>`<path d="m${55+i*11} 106-10 17" stroke="#c0a779" stroke-width="1.5"/>`).join(''):''}<path d="m190 93 31-10" stroke="#ccae70" stroke-width="2"/>`,'regional-ship');
+  }
+  root.CorsairArt = { vessel, upgrade: id => frame(arts[id] || arts.sails, id), relic, ship, task: kind => kind === 'relic' ? relic('compass') : ['convoy', 'escort', 'flagship'].includes(kind) ? ship(kind === 'convoy' ? 'galleon' : 'brig', kind !== 'escort') : frame(icons[kind] || icons.chart, kind) };
 })(globalThis);

@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#092e35">
-  <meta name="description" content="An open-water pirate adventure. Sail by the wind, trade broadsides, claim prizes, and hunt the Red Tide across a living 3D archipelago. Entirely in your browser.">
-  <title>Wake of the Corsair</title>
+  <meta name="description" content="An open-world naval adventure across the Muslim maritime world. Protect trade, confront colonial fleets, and discover rare passages between seas and centuries.">
+  <title>Crescent Seas · Empires of the Monsoon</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d3439'/%3E%3Cpath d='M32 8v37H13l19-37M36 17v28h17L36 17M9 49h48l-8 9H17z' fill='%23e3c68a'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
   <main id="game-shell">
@@ -15,32 +15,34 @@
     <div class="film-grain" aria-hidden="true"></div>
     <div id="game-ui" hidden>
       <header class="topbar">
-        <a class="brand" href="#" id="brand-button" aria-label="Open voyage journal"><span class="brand-mark">♜</span><span>WAKE <i>of the</i> CORSAIR<small>THE SAFFRON ARCHIPELAGO · 1668</small></span></a>
-        <div class="top-stats"><div><small>DOUBLOONS</small><strong id="gold">320</strong></div><div><small>CARGO VALUE</small><strong id="cargo">0</strong></div><div class="date-stat"><small>AT SEA</small><strong id="day">Day 01</strong></div><button id="sound" class="square" title="Enable sound" aria-label="Enable sound">♫</button><button id="pause" class="square" title="Pause (Escape)" aria-label="Pause game">Ⅱ</button></div>
+        <a class="brand" href="#" id="brand-button" aria-label="Open voyage journal"><span class="brand-mark">☾</span><span>CRESCENT SEAS<small>EMPIRES OF THE MONSOON</small></span></a>
+        <div class="top-stats"><div><small>GOLD</small><strong id="gold">320</strong></div><div><small>CARGO VALUE</small><strong id="cargo">0</strong></div><div class="date-stat"><small>AT SEA</small><strong id="day">Day 01</strong></div><button id="sound" class="square" title="Enable sound" aria-label="Enable sound">♫</button><button id="pause" class="square" title="Pause (Escape)" aria-label="Pause game">Ⅱ</button></div>
       </header>
-      <aside class="commission-panel"><div class="eyebrow"><span class="diamond">◆</span> LETTER OF MARQUE <span id="act">1 / 2</span></div><h1 id="mission-title">A fortune in the shallows</h1><p id="mission-text"></p><div class="mission-progress"><span id="mission-progress"></span></div><button class="text-button" id="journal-button">Open captain’s journal <span>J ↗</span></button></aside>
-      <aside id="target-card" class="target-card" hidden><div class="eyebrow" id="target-role">RED TIDE</div><h2 id="target-name"></h2><div class="target-health"><span id="target-hull"></span></div><p id="target-detail"></p><button id="board-button" class="text-button" hidden>Launch boarding party <span>B ↗</span></button></aside>
+      <div class="world-strip"><button id="atlas-button"><span id="world-region">MALABAR & GUJARAT · 1530</span> <kbd>G</kbd> ↗</button><span id="service-label"></span><button id="codex-button">History & legend ↗</button></div>
+      <aside class="commission-panel"><div class="eyebrow"><span class="diamond">◆</span> SEA COMMISSION <span id="act">1 / 2</span></div><h1 id="mission-title">Convoy supplies in the shallows</h1><p id="mission-text"></p><div class="mission-progress"><span id="mission-progress"></span></div><button class="text-button" id="journal-button">Open captain’s journal <span>J ↗</span></button></aside>
+      <aside id="target-card" class="target-card" hidden><div class="eyebrow" id="target-role">ARMED IMPERIAL FLEET</div><h2 id="target-name"></h2><div class="target-health"><span id="target-hull"></span></div><p id="target-detail"></p><button id="board-button" class="text-button" hidden>Launch boarding party <span>B ↗</span></button></aside>
       <div id="world-labels" aria-hidden="true"></div>
       <div id="messages" class="messages" role="status" aria-live="polite"></div>
       <div id="context" class="context" hidden><span id="context-text"></span><button id="context-button">E · ENTER PORT</button></div>
-      <section class="ship-panel" aria-label="Your ship status"><div class="ship-title"><span class="ship-icon">⛵</span><div><small id="ship-class">8-GUN SLOOP</small><strong id="ship-name">The Wayfarer</strong></div><button id="ship-details" class="square" aria-label="Ship details">↗</button></div><div class="ship-meters"><label>HULL <span id="hull-text">100%</span><div class="meter"><i id="hull-fill"></i></div></label><label>SAILS <span id="sails-text">100%</span><div class="meter sails"><i id="sails-fill"></i></div></label><label>CREW <span id="crew-text">40</span><div class="meter crew"><i id="crew-fill"></i></div></label></div></section>
+      <section class="ship-panel" aria-label="Your ship status"><div class="ship-title"><span class="ship-icon">⛵</span><div><small id="ship-class">8-GUN COASTAL CRAFT</small><strong id="ship-name">Safina</strong></div><button id="ship-details" class="square" aria-label="Ship details">↗</button></div><div class="ship-meters"><label>HULL <span id="hull-text">100%</span><div class="meter"><i id="hull-fill"></i></div></label><label>SAILS <span id="sails-text">100%</span><div class="meter sails"><i id="sails-fill"></i></div></label><label>CREW <span id="crew-text">40</span><div class="meter crew"><i id="crew-fill"></i></div></label></div></section>
       <section class="helm-panel" aria-label="Sailing and ammunition"><div class="sailing-readout"><div><strong id="speed">0.0</strong><small>KNOTS</small></div><div class="sail-switch"><button id="full-sails" class="active" title="Full sails (↑ / W)">FULL SAILS <kbd>↑</kbd></button><button id="reef-sails" title="Reef sails (↓ / S)">REEFED <kbd>↓</kbd></button></div><div class="wind-readout"><span id="wind-arrow">↑</span><div><small>WIND</small><strong id="wind-speed">12 kn</strong></div></div></div><div class="battery"><div class="ammo-buttons" role="group" aria-label="Cannon ammunition"><button data-ammo="round" class="active" title="Round shot: hull damage, longest range"><span class="ammo-icon">●</span> ROUND <kbd>1</kbd></button><button data-ammo="chain" title="Chain shot: disable sails, medium range"><span class="ammo-icon">∞</span> CHAIN <kbd>2</kbd></button><button data-ammo="grape" title="Grape shot: reduce crew, short range"><span class="ammo-icon">⁙</span> GRAPE <kbd>3</kbd></button></div><button id="fire" class="fire-button"><span id="fire-text">FIRE BROADSIDE</span><small id="reload-text">SPACE</small><i id="reload-fill"></i></button></div></section>
-      <aside class="chart-panel"><div class="chart-heading"><span class="eyebrow">LOCAL WATERS</span><button id="map-button" aria-label="Open world chart">M ⤢</button></div><canvas id="minimap" width="220" height="155" aria-label="Local sea chart"></canvas><div class="chart-footer"><span id="location">HAVEN WATERS</span><span id="weather">FAIR WINDS</span></div></aside>
+      <aside class="chart-panel"><div class="chart-heading"><span class="eyebrow">LOCAL WATERS</span><button id="map-button" aria-label="Open world chart">M ⤢</button></div><canvas id="minimap" width="220" height="155" aria-label="Local sea chart"></canvas><div class="chart-footer"><span id="location">MALABAR COAST</span><span id="weather">FAIR WINDS</span></div></aside>
       <footer class="control-strip"><span><kbd>←</kbd><kbd>→</kbd> Helm</span><span><kbd>SPACE</kbd> Broadside</span><span><kbd>B</kbd> Board</span><span><kbd>E</kbd> Port</span><span><kbd>M</kbd> Chart</span><span class="camera-tip">Drag to orbit · Scroll to zoom · <kbd>C</kbd> Camera</span></footer>
       <div class="touch-helm"><button data-hold="left" aria-label="Steer left">↶</button><button data-hold="right" aria-label="Steer right">↷</button></div>
     </div>
     <section id="welcome" class="welcome">
-      <div class="welcome-top"><span>AN OPEN-WATER ADVENTURE</span><span>1668 · THE AGE OF SAIL</span></div>
-      <div class="welcome-copy"><div class="title-rule">✦ <span>FORTUNE FAVORS THE WINDWARD</span></div><h1>Wake <em>of the</em><br>Corsair<span>.</span></h1><p>One ship. Uncharted fortunes.<br>A whole sea between you and a legend.</p><button id="start" class="primary">Set sail <span>→</span></button><button id="continue" class="continue" hidden>Continue your voyage ↗</button><small class="welcome-note">Generated voyages · An open horizon</small></div>
-      <div class="welcome-bottom"><span>SAIL THE WIND &nbsp; / &nbsp; CLAIM YOUR PRIZE &nbsp; / &nbsp; WRITE YOUR LEGEND</span><button id="welcome-help">The captain’s handbook ↗</button></div>
+      <div class="welcome-top"><span>AN OPEN-WATER ADVENTURE</span><span>SEVEN SEAS · MANY CENTURIES</span></div>
+      <div class="welcome-copy"><div class="title-rule">✦ <span>CHART A COURSE THROUGH HISTORY</span></div><h1>Crescent<br><em class="seas-word">Seas</em><span>.</span></h1><p>From Calicut to the corsair seas.<br>Serve a court. Guard a route. Defy an empire.</p><button id="start" class="primary">Set sail <span>→</span></button><button id="continue" class="continue" hidden>Continue your voyage ↗</button><small class="welcome-note">Generated voyages · Rare passages through time</small></div>
+      <div class="welcome-bottom"><span>SAIL THE MONSOON &nbsp; / &nbsp; DEFEND THE ROUTES &nbsp; / &nbsp; CROSS THE CENTURIES</span><button id="welcome-help">The captain’s handbook ↗</button></div>
     </section>
     <dialog id="modal"><div id="modal-content"></div></dialog>
     <div id="webgl-error" hidden><h1>Your browser couldn’t launch the sea.</h1><p>This game needs WebGL. Enable hardware acceleration or try another browser.</p></div>
     <noscript>This adventure needs JavaScript enabled.</noscript>
   </main>
-  <script src="src/engine.js?v=5"></script>
-  <script src="src/renderer.js?v=5"></script>
-  <script src="src/art.js?v=5"></script>
-  <script src="src/game.js?v=5"></script>
+  <script src="src/worlds.js?v=8"></script>
+  <script src="src/engine.js?v=8"></script>
+  <script src="src/renderer.js?v=8"></script>
+  <script src="src/art.js?v=8"></script>
+  <script src="src/game.js?v=8"></script>
 </body>
 </html>
