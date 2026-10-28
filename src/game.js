@@ -1,19 +1,18 @@
 (function () {
   'use strict';
   const C = window.Corsair, Art = window.CorsairArt, $ = id => document.getElementById(id), SAVE='crescent-seas-captain-v4';
-  let autoRoute = [],autoRouteWind=0;
+  let autoRoute = [],autoRouteWind=0,autoRouteTime=-10;
   let renderer;
   try { renderer = new window.CorsairRenderer($('sea')); } catch (e) { console.error(e); $('webgl-error').hidden = false; $('welcome').hidden = true; return; }
   let state = C.create(), started = false, currentModal = null, currentTab = 'services', saveWarning = false, autoSail = false, chaseCamera = false, lastUI = 0, lastSave = 0, target = null, soundEnabled = false;
-  const keys = new Set(), presses = {}, touch = { left: false, right: false }, notices = [];
+  const keys = new Set(), presses = {}, touch={left:false,right:false,row:false}, notices = [];
   let audio = null;
   function audioStart() {
     if (!audio) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       const ctx = new AC(), master = ctx.createGain(); master.gain.value = .35; master.connect(ctx.destination);
-      const length = ctx.sampleRate * 3, buffer = ctx.createBuffer(1, length, ctx.sampleRate), data = buffer.getChannelData(0);
-      let last = 0; for (let i = 0; i < length; i++) { last = (last + (Math.random() * 2 - 1) * .02) / 1.02; data[i] = last * 5; }
+      const buffer=window.CrescentAudio.createNoise(ctx);
       const surf = ctx.createBufferSource(); surf.buffer = buffer; surf.loop = true;
       const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 550;
       const ambient = ctx.createGain(); ambient.gain.value = .11; surf.connect(filter); filter.connect(ambient); ambient.connect(master); surf.start();
@@ -23,7 +22,8 @@
   }
   function effect(type) {
     if (!audio || !soundEnabled) return;
-    const { ctx, master, buffer } = audio, now = ctx.currentTime;
+    const {ctx,master,buffer}=audio,now=ctx.currentTime;
+    if(type==='sink'){window.CrescentAudio.shipBreak(ctx,master,buffer);return;}
     const g = ctx.createGain(); g.connect(master);
     if (['fire','hit','sink','splash','collision'].includes(type)) {
       const source = ctx.createBufferSource(); source.buffer = buffer;
@@ -57,9 +57,11 @@
     if (resume) { C.dock(state); portView('contracts'); state.events = []; }
     notify(resume ? 'Captain restored. Fresh waters and new commissions await.' : `Welcome aboard Safina. Recover the convoy supplies off ${C.portById(state,C.world(state).home).name}. Your chart shows the route.`, 'good', 9);
   }
-  function clearInput() { keys.clear(); touch.left = false; touch.right = false; for (const k of Object.keys(presses)) delete presses[k]; }
+  function clearInput() { keys.clear(); touch.left = false; touch.right=false;touch.row=false; for (const k of Object.keys(presses)) delete presses[k]; }
   function openModal(kind, html, tab = null) {
-    clearInput(); currentModal = kind;
+    if(state.phase==='sinking'&&kind!=='pause')return;
+    clearInput();currentModal=kind;
+    if(started&&audio)audio.ctx.suspend().catch(()=>{});
     if (tab) currentTab = tab;
     $('modal-content').innerHTML = `<div class="modal-inner ${kind === 'victory' ? 'victory' : ''}">${html}</div>`;
     if (!$('modal').open) $('modal').showModal();
@@ -70,7 +72,7 @@
     if ($('modal').open) $('modal').close();
     currentModal = null; clearInput();
     if (state.phase === 'port') C.leavePort(state);
-    if (started) { save(); $('sea').focus({ preventScroll: true }); }
+    if(started){audioStart();save(); $('sea').focus({ preventScroll: true }); }
   }
   function top(eyebrow, title, lead = '') { return `<div class="modal-top"><div><div class="eyebrow">${eyebrow}</div><h2>${title}</h2>${lead ? `<p>${lead}</p>` : ''}</div><button class="square" data-close aria-label="Close dialog">×</button></div>`; }
   const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -137,7 +139,7 @@
     openModal('journal',`${top('THE CAPTAIN’S JOURNAL',state.complete?'The next horizon awaits':v.name,state.complete?'Your last voyage is complete. Dock at any harbor to choose a new generated commission.':`${C.THEMES[v.theme].name} · ${v.legs.length} linked objectives · ${v.reward} gold + loot`)}${state.complete?'':`<ol class="journal-list">${v.legs.map((m,i)=>`<li class="${state.complete||i<state.legIndex?'done':i===state.legIndex?'current':''}"><div class="journal-art">${Art.task(m.kind)}</div><div><span class="eyebrow">LEG ${i+1} ${state.complete||i<state.legIndex?'· COMPLETE':''}</span><h3>${esc(m.name)}</h3><p>${esc(m.text)}</p><small>${m.reward} ◈ ${m.kind==='relic'?'· ARTIFACT REWARD':''}</small></div></li>`).join('')}</ol>`}<div class="modal-actions"><button class="secondary" data-map>Open sea chart ↗</button><button class="primary" data-close>Back aboard <span>→</span></button></div>`);
   }
   function help() {
-    openModal('help', `${top('THE CAPTAIN’S HANDBOOK', 'Read the sea. Write your legend.', 'Your ship keeps sailing when you release the helm. Make small corrections, mind the wind, and plan your next broadside.')}<div class="handbook"><section><h3>At the helm</h3><dl><dt>← / → or A / D</dt><dd>Turn to port / starboard</dd><dt>↑ / W / Numpad 8</dt><dd>Full sails, maximum speed</dd><dt>↓ / S / Numpad 2</dt><dd>Reef sails, tighter turns</dd><dt>Space / Numpad 5</dt><dd>Fire at an enemy in either broadside</dd><dt>Q / R</dt><dd>Fire port / starboard manually</dd><dt>1 / 2 / 3</dt><dd>Round / chain / grape ammunition</dd><dt>B</dt><dd>Board a weakened ship within 53 yards</dd><dt>E</dt><dd>Dock at a nearby harbor</dd><dt>M / J / H</dt><dd>Sea chart / journal / handbook</dd><dt>G / T / K</dt><dd>Sea atlas / nearby Turning Water / history</dd><dt>N</dt><dd>Toggle navigation to your chart waypoint</dd><dt>C / drag / wheel</dt><dd>Chase camera / orbit / zoom</dd><dt>Escape / P</dt><dd>Pause and save</dd></dl></section><section><h3>A fighting chance</h3><p>Guns fire from the sides. Turn across a target’s path, release a volley, then maneuver while the crew reloads. The full battery reloads in about six seconds.</p><p><b>Round</b> shot damages hulls at long range. <b>Chain</b> shreds sails at medium range. <b>Grape</b> reduces crew at close range. All can cause some collateral damage.</p><p>When an enemy has less than 43% sails, roughly half its crew, or 43% hull, close in and press <b>B</b>. Your crew must be strong enough to board. Capturing pays better than sinking.</p><p>Sail through floating cargo to recover it; docking sells it. Visit the shipwright for upgrades. Winds shift between lulls, breezes, and gale fronts. Storms form offshore, drift across the chart, and fade. Reef before entering rough water or fit a weather glass. Breaking reefs and crosscurrents appear on the chart; collisions damage both hulls, including your own. Whitecaps and rolling ships reveal rough water.</p><p>Serve regional patrons to defend trade and oppose armed imperial fleets. Three completed voyages chart a Turning Water. <b>G</b> opens the atlas; <b>T</b> enters a nearby passage after your current commission is delivered.</p><p>Visit the voyage board for generated, linked commissions. Discover artifacts for permanent ship bonuses. Your profile is saved; loading renews the open sea and offers.</p><p>Click the full chart to set a waypoint. <b>N</b> assists navigation; steering cancels it. It will skirt islands, but keep watch for enemies and storms.</p></section></div><div class="modal-actions"><span class="save-note">Touch: use the helm buttons and on-screen sails, guns, and context actions.</span><button class="primary" data-close>Understood <span>→</span></button></div>`);
+    openModal('help', `${top('THE CAPTAIN’S HANDBOOK', 'Read the sea. Write your legend.', 'Your ship follows its bow; the helm turns it. Sails provide wind power, while oars are a separate crew effort on eligible vessels. Set canvas with V/X/Z, hold W or ↑ to row, and plan your next broadside.')}<div class="handbook"><section><h3>At the helm</h3><dl><dt>← / → or A / D</dt><dd>Turn to port / starboard</dd><dt>↑ / W / Numpad 8</dt><dd>Hold to row on light craft and galleys</dd><dt>↓ / S / Numpad 2</dt><dd>Furl sails and rest oars</dd><dt>V / X / Z</dt><dd>Full / reefed / furled sails</dd><dt>F</dt><dd>Cycle the three sail settings</dd><dt>Space / Numpad 5</dt><dd>Fire at an enemy in either broadside</dd><dt>Q / R</dt><dd>Fire port / starboard manually</dd><dt>1 / 2 / 3</dt><dd>Round / chain / grape ammunition</dd><dt>B</dt><dd>Board a weakened ship within 53 yards</dd><dt>E</dt><dd>Dock at a nearby harbor</dd><dt>M / J / H</dt><dd>Sea chart / journal / handbook</dd><dt>G / T / K</dt><dd>Sea atlas / nearby Turning Water / history</dd><dt>N</dt><dd>Toggle navigation to your chart waypoint</dd><dt>C / drag / wheel</dt><dd>Chase camera / orbit / zoom</dd><dt>Escape / P</dt><dd>Pause and save</dd></dl></section><section><h3>A fighting chance</h3><p>Full sails catch the most wind; reefing reduces canvas; furling removes wind power. Sailing straight into the wind stalls the ship: tack across it, or furl and hold ↑ / W to row on eligible craft. Watch the oar endurance bar and let the crew rest. Oars are slower than good sailing and do not provide a constant sailing-speed boost.</p><p>Guns fire from the sides. Turn across a target’s path, release a volley, then maneuver while the crew reloads. The full battery reloads in about six seconds.</p><p><b>Round</b> shot damages hulls at long range. <b>Chain</b> shreds sails at medium range. <b>Grape</b> reduces crew at close range. All can cause some collateral damage.</p><p>When an enemy has less than 43% sails, roughly half its crew, or 43% hull, close in and press <b>B</b>. Your crew must be strong enough to board. Capturing pays better than sinking.</p><p>Sail through floating cargo to recover it; docking sells it. Visit the shipwright for upgrades. Winds shift between lulls, breezes, and gale fronts. Storms form offshore, drift across the chart, and fade. Reef before entering rough water or fit a weather glass. Breaking reefs and crosscurrents appear on the chart; collisions damage both hulls, including your own. Whitecaps and rolling ships reveal rough water.</p><p>Serve regional patrons to defend trade and oppose armed imperial fleets. Three completed voyages chart a Turning Water. <b>G</b> opens the atlas; <b>T</b> enters a nearby passage after your current commission is delivered.</p><p>Visit the voyage board for generated, linked commissions. Discover artifacts for permanent ship bonuses. Your profile is saved; loading renews the open sea and offers.</p><p>Click the full chart to set a waypoint. <b>N</b> assists navigation; steering cancels it. It plans tacking legs around islands and reefs, and uses oars on eligible craft near the wind. Keep watch for enemies and storms.</p></section></div><div class="modal-actions"><span class="save-note">Touch: use the helm buttons and on-screen sails, guns, and context actions.</span><button class="primary" data-close>Understood <span>→</span></button></div>`);
   }
   function pauseView() {
     save();
@@ -252,9 +254,12 @@
     $('ship-class').textContent = `${spec.guns}-GUN ${C.shipName(state,p.class).toUpperCase()}`; $('ship-name').textContent = p.name;
     for (const [id, value, max] of [['hull', p.hull, C.maxHull(p)], ['sails', p.sails, 100], ['crew', p.crew, C.maxCrew(p)]]) { $(id + '-text').textContent = id === 'crew' ? `${Math.ceil(value)}` : `${Math.ceil(value / max * 100)}%`; $(id + '-fill').style.width = `${C.clamp(value / max * 100, 0, 100)}%`; }
     $('speed').textContent = (p.speed * .32).toFixed(1); $('wind-speed').textContent = `${Math.round(wind.strength)} kn`; $('wind-arrow').style.transform = `rotate(${180-wind.angle*180/Math.PI}deg)`;
-    $('full-sails').classList.toggle('active', !!p.sail); $('reef-sails').classList.toggle('active', !p.sail);
+    const lost=state.phase==='sinking';$('loss-overlay').hidden=!lost;$('rescue-progress').value=state.loss?.elapsed||0;
+    $('full-sails').classList.toggle('active',p.sail===1);$('reef-sails').classList.toggle('active',p.sail===0);$('furl-sails').classList.toggle('active',p.sail===-1);
+    for(const id of ['full-sails','reef-sails','furl-sails'])$(id).disabled=lost;
+    $('row-hold').disabled=lost||!C.canRow(state,p);$('row-hold').classList.toggle('active',!!p.oarActive);$('oars-state').textContent=!C.canRow(state,p)?'SAIL-POWERED VESSEL':p.oarsTired?'CREW RESTING':`${p.oarActive?'ROWING':'OARS READY'} · ${Math.ceil(p.oarStamina??100)}%`;$('oars-fill').style.width=`${p.oarStamina??100}%`;if(!lost&&!p.oarActive&&p.sail!==-1&&C.polar(p.angle,wind.angle,p.class)<.08)$('oars-state').textContent=C.canRow(state,p)?'HEADWIND · FURL & ROW':'HEADWIND · TACK ACROSS WIND';
     document.querySelectorAll('[data-ammo]').forEach(b => b.classList.toggle('active', b.dataset.ammo === p.ammo));
-    $('reload-fill').style.width = `${p.reload * 100}%`; $('fire-text').textContent = p.reload >= .98 ? 'FIRE BROADSIDE' : 'RELOADING'; $('reload-text').textContent = p.reload >= .98 ? 'SPACE' : `${Math.ceil((1 - p.reload) * 6.5)} SEC`; $('fire').disabled = p.reload < .98;
+    $('reload-fill').style.width = `${p.reload * 100}%`; $('fire-text').textContent = p.reload >= .98 ? 'FIRE BROADSIDE' : 'RELOADING'; $('reload-text').textContent = p.reload >= .98 ? 'SPACE' : `${Math.ceil((1 - p.reload) * 6.5)} SEC`; $('fire').disabled=lost||p.reload<.98;
     const enemies = state.ships.filter(v => !v.friendly && C.dist(p, v) < 430).sort((a, b) => C.dist(p, a) - C.dist(p, b));
     target = enemies.find(v => v.id === state.selected) || enemies[0] || null;
     $('target-card').hidden = !target;
@@ -276,6 +281,7 @@
     $('wind-speed').title=`${state.atmosphere?.kind||'Regional wind'} · another shift may arrive in ${Math.max(0,Math.ceil((state.atmosphere?.nextFront||0)-state.time))} seconds`;
     const nearest = [...C.islands(state)].sort((a, b) => C.dist(p, a) - C.dist(p, b))[0];
     $('location').textContent = nearest.name.toUpperCase(); const danger=(state.hazards||[]).find(h=>C.dist(p,h)<h.r+70);$('weather').textContent=wind.hazard>.55?'STORM · REEF SAILS':wind.hazard>.12?'SQUALL · REEF SAILS':danger?.kind==='reef'?'REEF AHEAD':danger?'CROSSCURRENT':wind.strength>21?'GALE FRONT':wind.strength<9?'LIGHT AIRS':'FRESH BREEZE';
+    if(lost){$('context').hidden=true;$('target-card').hidden=true;}document.querySelector('.commission-panel').hidden=lost;
     drawChart($('minimap'));
   }
   function toggleAutoSail() {
@@ -287,10 +293,10 @@
     if (!autoSail || !state.waypoint) return 0;
     const p = state.player, goal = state.waypoint;
     if (C.dist(p, goal) < 18) { autoSail = false; state.waypoint = null; notify('You have reached your charted destination.', 'good'); return 0; }
-    if(!autoRoute.length||Math.abs(C.angleDiff(state.wind.angle,autoRouteWind))>.5){autoRoute=C.navigationRoute(state,p,goal);autoRouteWind=state.wind.angle;}
-    while(autoRoute.length>1&&C.dist(p,autoRoute[0])<42) autoRoute.shift();
+    if(!autoRoute.length||Math.abs(C.angleDiff(state.wind.angle,autoRouteWind))>.4||(state.time-autoRouteTime>5&&autoRoute.length&&C.polar(C.bearing(p,autoRoute[0]),state.wind.angle,p.class)<.08)){autoRoute=C.navigationRoute(state,p,goal);autoRouteWind=state.wind.angle;autoRouteTime=state.time;}
+    while(autoRoute.length>1&&C.dist(p,autoRoute[0])<14) autoRoute.shift();
     const desired=C.bearing(p,autoRoute[0]||goal);
-    p.sail=Math.abs(C.angleDiff(desired,p.angle))>.85||C.windAt(state,p).hazard>.2?0:1;
+    p.sail=C.canRow(state)&&C.polar(p.angle,C.windAt(state,p).angle,p.class)<.08?-1:Math.abs(C.angleDiff(desired,p.angle))>.85||C.windAt(state,p).hazard>.2?0:1;
     return -C.clamp(C.angleDiff(desired, p.angle) * 2.2, -1, 1);
   }
   function processEvents() {
@@ -306,7 +312,8 @@
       if (['fire','hit','sink','splash','collision'].includes(e.type) && C.dist(e, state.player) < 600) effect(e.type);
       if (e.type === 'port') openPort = true;
       if (e.type === 'victory') victory = true;
-      if (e.type === 'rescued') { autoSail = false; state.waypoint = null; renderer.follow = { x: state.player.x, z: state.player.z }; notify(e.text, 'warning', 10); save(); }
+      if(e.type==='foundering'){autoSail=false;clearInput();notify(e.text,'warning',6);save();}
+      if (e.type === 'rescued') { autoSail = false; state.waypoint = null; renderer.follow = { x: state.player.x, z: state.player.z }; notify(e.text,'warning',10);save();portView('services');}
     }
     if (openPort) { autoSail = false; save(); if (victory) victoryView(); else portView(state.complete?'contracts':'services'); }
     state.events = [];
@@ -321,7 +328,8 @@
   $('pause').onclick = pauseView; $('map-button').onclick = mapView;
   $('sound').onclick = () => { soundEnabled = !soundEnabled; audioStart(); $('sound').textContent = soundEnabled ? '♫' : '♪'; $('sound').title = soundEnabled ? 'Mute sound' : 'Enable sound'; $('sound').setAttribute('aria-label', $('sound').title); };
   $('fire').onclick = () => presses.fire = true; $('board-button').onclick = () => presses.board = true;
-  $('full-sails').onclick = () => state.player.sail = 1; $('reef-sails').onclick = () => state.player.sail = 0;
+  const setSail=value=>{state.player.sail=value;autoSail=false;updateUI();};
+  $('full-sails').onclick=()=>setSail(1);$('reef-sails').onclick=()=>setSail(0);$('furl-sails').onclick=()=>setSail(-1);
   document.querySelectorAll('[data-ammo]').forEach(b => b.onclick = () => { state.player.ammo = b.dataset.ammo; updateUI(); });
   document.querySelectorAll('[data-hold]').forEach(b => {
     b.addEventListener('pointerdown', e => { b.setPointerCapture(e.pointerId); touch[b.dataset.hold] = true; autoSail = false; });
@@ -333,13 +341,15 @@
     if (currentModal) { if (e.code === 'KeyM' && currentModal === 'map') closeModal(); return; }
     if (!started) return;
     if (['Escape', 'KeyP'].includes(e.code)) { e.preventDefault(); pauseView(); return; }
+    if(state.phase==='sinking')return;
     if(e.code==='KeyG'){atlasView();return;}if(e.code==='KeyT'){passageView();return;}if(e.code==='KeyK'){codexView();return;}
     if (e.code === 'KeyM') { mapView(); return; } if (e.code === 'KeyJ') { journal(); return; } if (e.code === 'KeyH') { help(); return; }
     if (e.code === 'KeyN' && !e.repeat) toggleAutoSail();
     if (e.code === 'KeyC' && !e.repeat) { chaseCamera = !chaseCamera; if (!chaseCamera) renderer.yaw = .2; }
     keys.add(e.code);
-    if (['ArrowUp', 'KeyW', 'Numpad8'].includes(e.code)) state.player.sail = 1;
-    if (['ArrowDown', 'KeyS', 'Numpad2'].includes(e.code)) state.player.sail = 0;
+    if(['ArrowUp','KeyW','Numpad8'].includes(e.code)){autoSail=false;if(!C.canRow(state)&&!e.repeat)notify('This vessel relies on sail. Set canvas with V, then tack across the wind.');}
+    if(['ArrowDown','KeyS','Numpad2','KeyZ'].includes(e.code))setSail(-1);
+    if(e.code==='KeyV')setSail(1);if(e.code==='KeyX')setSail(0);if(e.code==='KeyF'&&!e.repeat)setSail(state.player.sail===1?0:state.player.sail===0?-1:1);
     const ammos = { Digit1: 'round', Digit2: 'chain', Digit3: 'grape', Numpad3: 'round', Numpad7: 'chain', Numpad1: 'grape' }; if (ammos[e.code]) state.player.ammo = ammos[e.code];
     if (e.code === 'KeyE' && !e.repeat) presses.dock = true;
     if (e.code === 'KeyB' && !e.repeat) presses.board = true;
@@ -364,7 +374,7 @@
       const right = keys.has('ArrowRight') || keys.has('KeyD') || keys.has('Numpad6') || touch.right;
       if (left || right) autoSail = false;
       while (accumulator >= 1 / 60 && !currentModal) {
-        const input = { helm: left || right ? Number(right) - Number(left) : navigationHelm(), fire: presses.fire || keys.has('Space') || keys.has('Numpad5'), side: presses.side || 0, dock: presses.dock, board: presses.board };
+        const input = { row:state.phase==='sailing'&&!(keys.has('ArrowDown')||keys.has('KeyS'))&&(keys.has('ArrowUp')||keys.has('KeyW')||keys.has('Numpad8')||touch.row||(autoSail&&C.canRow(state)&&C.polar(state.player.angle,C.windAt(state,state.player).angle,state.player.class)<.12)),helm: left || right ? Number(right)-Number(left):state.phase==='sailing'?navigationHelm():0, fire: presses.fire || keys.has('Space') || keys.has('Numpad5'), side: presses.side || 0, dock: presses.dock, board: presses.board };
         C.step(state, input, 1 / 60); for (const k of Object.keys(presses)) delete presses[k]; processEvents(); accumulator -= 1 / 60;
       }
       if (chaseCamera) renderer.yaw += C.angleDiff(state.player.angle + Math.PI, renderer.yaw) * Math.min(1, dt * 2);

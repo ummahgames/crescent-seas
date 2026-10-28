@@ -47,11 +47,15 @@ Your ship, crew, condition, cargo, treasury, equipment, and progression cross to
 
 ## Sailing, combat, and ship improvements
 
+Canvas and oars are separate controls: V/X/Z select full, reefed, or furled sails, F cycles them, and holding ↑/W rows on eligible light craft and galleys. Furled sails provide no hidden wind power; sailing upwind requires tacking outside the no-go sector, or using oars. Crew endurance limits rowing, and larger sailing vessels rely on sail.
+
 Wind angle, sail setting, hull condition, rigging damage, crew strength, fittings, and patron bonuses influence sailing. Seeded weather fronts bring lulls, fresh breezes, gale winds, and larger direction changes. Occasional storm cells build offshore, drift, and dissipate. Reefing sacrifices speed for tighter handling and reduced storm exposure. Moving squalls bring local gusts, rougher waves, rain, and damage to exposed ships.
 
 Charted reef clusters can damage hulls, while crosscurrents pull ships off course. Ship-to-ship collisions damage both vessels according to closing speed and relative size. Grounding and reef strikes affect player and AI ships. Whitecaps, intermittent breaking crests, and ship heave/roll make sea conditions visible.
 
 Cannons fire from the ship’s sides. Round shot emphasizes hull damage, chain shot disables rigging, and grape shot weakens crew. Visible projectile travel gives ships time to maneuver. Boarding requires a nearby, weakened opponent and a sufficiently strong crew; an intact prize is more valuable than a sinking.
+
+Destroyed ships break apart and sink over several seconds, accompanied by synthesized timber cracks, creaks, and water sounds. Player destruction completes its 5.8-second sequence before rescue returns the captain to harbor. Captured prizes remain distinct from destroyed vessels.
 
 Illustrated shipwright panels offer sails, copper plating, hull reinforcement, powder, cannon, gunners, and weather equipment. Larger vessels retain installed fittings and artifact bonuses. Liveries and some fittings change the visible ship model.
 
@@ -86,6 +90,7 @@ Loading returns the captain to the saved sea with fresh encounters and voyage of
 | `src/worlds.js` | Seas, coastline silhouettes, ports, eras, patrons, and palettes |
 | `src/engine.js` | Sailing, combat, generation, navigation, progression, and saves |
 | `src/renderer.js` | Native WebGL geometry, water, camera, and effects |
+| `src/audio.js` | Shared timber-breaking, creaking, and sinking-water audio |
 | `src/art.js` | Vector illustrations for ships, fittings, tasks, and artifacts |
 | `src/game.js` | Input, UI, charts, audio, and simulation/render scheduling |
 | `PLAYING.md` | Detailed player guide and implementation behavior |
@@ -98,4 +103,4 @@ Run the tests from this folder:
 node --test tests/engine.test.cjs
 ```
 
-Coverage includes sailing, projectile arcs, ammunition, boarding, delivery, purchases, storms, generated voyages, profile persistence, patron service, rare passages, changing weather, collision damage, reef strikes, current drift, coastline clearance, and all 100 regional harbor-to-harbor escort routes.
+Coverage includes separate sail/oar propulsion, crew endurance, timed sinking and rescue, friendly/hostile wrecks, capture distinctions, loss-aware saves, sailing, projectile arcs, ammunition, boarding, delivery, purchases, storms, generated voyages, profile persistence, patron service, rare passages, changing weather, collision damage, reef strikes, current drift, coastline clearance, and all 100 regional harbor-to-harbor escort routes.

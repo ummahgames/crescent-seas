@@ -20,8 +20,10 @@ Then visit [the local game](http://127.0.0.1:8771/). Saving is per browser and o
 | Input | Action |
 | --- | --- |
 | Left/right arrows, A/D, numpad 4/6 | Turn the helm to port/starboard |
-| Up arrow, W, numpad 8 | Full sails |
-| Down arrow, S, numpad 2 | Reef sails for tighter turns and less storm exposure |
+| Hold up arrow, W, numpad 8 | Row forward on an eligible light craft or galley |
+| Down arrow, S, numpad 2 | Furl sails and rest oars |
+| V / X / Z | Full / reefed / furled sails |
+| F | Cycle full → reefed → furled sails |
 | Space, numpad 5 | Fire at an enemy within either broadside |
 | Q / R | Fire the port / starboard battery manually |
 | 1 / 2 / 3 | Round / chain / grape shot |
@@ -35,13 +37,21 @@ Then visit [the local game](http://127.0.0.1:8771/). Saving is per browser and o
 | Drag on the sea / mouse wheel | Orbit the camera / zoom |
 | Escape / P | Pause |
 
-Touch controls provide helm buttons, sail settings, ammunition, firing, boarding, and harbor actions. Click the full chart to plot a course. Manual steering cancels navigation assistance.
+Touch controls provide helm buttons, three sail settings, a hold-to-row button with an endurance meter, ammunition, firing, boarding, and harbor actions. Click the full chart to plot a course. Manual steering cancels navigation assistance.
 
-Your ship keeps moving when you release the controls. Wind direction changes its best course; reefing reduces speed and tightens the turn. Ships, islands, and cannonballs are 3D meshes. Cannonballs have visible travel time and parabolic vertical arcs, giving a turning ship an opportunity to evade a volley.
+The helm changes heading; propulsion moves the ship along its bow. Sail settings persist independently of the arrow keys. Full sails provide the most wind power, reefed sails retain a smaller area for tighter handling and less storm exposure, and furled sails provide no wind propulsion. A moving ship coasts and slows after furling; it does not stop instantly. Sails alone cannot propel the ship inside the 45° no-go sector on either side of the wind source. Sail on alternating close-hauled headings to make progress upwind. Navigation assistance plans those tacking legs and replans as needed. Ships, islands, and cannonballs are 3D meshes. Cannonballs have visible travel time and parabolic vertical arcs, giving a turning ship an opportunity to evade a volley.
 
 Round shot emphasizes hull damage at long range; chain shot emphasizes sails at medium range; grape emphasizes crew at short range. A weakened ship can be boarded within 53 world yards. Its sails must be below 43%, its crew below roughly half its starting complement, or its hull below 43%; your boarding party must also be strong enough. Capturing pays more than sinking.
 
-Sail over floating cargo to collect it. Docking sells it automatically. Repairs replenish hull, rigging, and crew. Purchasing a larger ship transfers fittings and artifact bonuses, and supplies a full crew. If your ship sinks, a tender returns you to your last harbor with your equipment intact and a loss of some coin and cargo.
+Sail over floating cargo to collect it. Docking sells it automatically. Repairs replenish hull, rigging, and crew. Purchasing a larger ship transfers fittings and artifact bonuses, and supplies a full crew. When a vessel is destroyed, its hull separates, the rig falls, timber scatters, and the wreck settles beneath the water with layered breaking, creaking, and water audio. The same animation applies to player, hostile, and friendly ships. Capturing an intact prize does not play a destruction sequence. If your ship is lost, controls are locked for a 5.8-second sinking sequence before a tender returns you to your last harbor. Equipment stays intact; some coin and cargo are lost. The harbor opens after rescue. Pausing also pauses the breaking audio and animation.
+
+### Oars and canvas
+
+Hold **↑ / W** or the **Hold to row** button to command forward oar power. Releasing it rests the crew. Light craft have auxiliary sweeps; the medium galley tier also rows in Mediterranean regions. Larger sailing vessels have no rowing control, and the interface identifies them as sail-powered. These capabilities and speeds are deliberate game abstractions.
+
+Oars work independently of wind, but raised canvas impedes rowing directly into a headwind. Furling gives the best rowing performance against it; reefing is a compromise. Rowing does not add a constant speed boost to already-fast sailing. The crew’s endurance falls while rowing and recovers at rest; an exhausted crew rests until it has recovered enough to resume. Crew losses and storm conditions reduce oar performance. Animated sweeps follow the rowing stroke, and the endurance meter distinguishes rowing, ready, and resting states.
+
+The separation of wind-powered motion from rowing follows the basic sailing distinction between tacking and direct upwind propulsion. The [RYA’s points-of-sail guide](https://www.rya.org.uk/training/do-you-know-your-points-of-sail/) describes the no-go zone and beating to windward; the game’s wind polar, auxiliary sweeps, endurance, and vessel handling simplify those ideas for play.
 
 ## Wind, weather, and navigation hazards
 
@@ -135,6 +145,8 @@ The game deliberately saves a **captain profile**, not an exact simulation snaps
 
 On resume, you return near the last harbor **in the saved sea and era**, with your captain and ship. That sea receives fresh encounters and a new choice of voyages. Earned whirlpool eligibility and discovered regions remain. Active objectives, enemy positions, projectiles, dropped cargo, chart waypoints, and a history of every accomplishment are intentionally not restored.
 
+Loss penalties are applied when the ship begins sinking. Closing during that short sequence saves the paid loss and a recovered ship; it does not record or replay the cinematic on reload.
+
 Profiles save automatically during play, on purchases, at ports, when pausing, and when leaving the page. Browser storage failures leave the current session playable and show a notice. New-voyage confirmation resets the profile. The initial prototype’s older save can be migrated into this profile format.
 
 ## Files
@@ -145,6 +157,7 @@ Profiles save automatically during play, on purchases, at ports, when pausing, a
 | `src/worlds.js` | Seven theater definitions, regional ports, patrons, eras, ship labels, and palettes |
 | `src/engine.js` | Fixed-step simulation, combat, generation, route planning, progression, profile persistence |
 | `src/renderer.js` | Native WebGL, procedural geometry, water shader, camera, particles, visible ship fittings |
+| `src/audio.js` | Shared synthesized timber-breaking, creaking, and sinking-water effect |
 | `src/art.js` | Original vector illustrations for equipment, vessels, tasks, and artifacts |
 | `src/game.js` | Input, menus, chart, audio, save scheduling, and simulation/render loop |
 | `tests/engine.test.cjs` | Node standard-library simulation and generation tests |
@@ -156,6 +169,6 @@ Run the tests from the workspace root:
 node --test crescent-seas/tests/engine.test.cjs
 ```
 
-Tests cover wind and sail handling, firing geometry, projectile arcs, ammunition effects, capture, delivery, purchases, weather, recovery, repeated generated voyages, generation across 250 seeds, all harbor-to-harbor escort routes, artifact bonuses, and compact profile persistence. Additional tests cover changing wind fronts, storm drift and dissipation, hull collisions, grounding, reef strikes, current drift, environmental save boundaries, all seven theaters, 100 regional escort routes, polygon coast clearance, safe harbor approaches, distinct patron service, earned whirlpool access, cross-era travel, and world-aware profile restoration. Browser QA covers WebGL startup, portrait and desktop layouts, patron and atlas screens, and calm/rough-water rendering across all seven seas. `tests/visual.html` is a clearly labeled renderer/transition fixture that does not read or write captain saves.
+Tests cover independent sail and oar propulsion, crew endurance, no-go headings and tacking routes, timed player rescue, hostile/friendly wreck lifetimes, capture without destruction, saves during ship loss, wind and sail handling, firing geometry, projectile arcs, ammunition effects, capture, delivery, purchases, weather, recovery, repeated generated voyages, generation across 250 seeds, all harbor-to-harbor escort routes, artifact bonuses, and compact profile persistence. Additional tests cover changing wind fronts, storm drift and dissipation, hull collisions, grounding, reef strikes, current drift, environmental save boundaries, all seven theaters, 100 regional escort routes, polygon coast clearance, safe harbor approaches, distinct patron service, earned whirlpool access, cross-era travel, and world-aware profile restoration. Browser QA covers WebGL startup, portrait and desktop layouts, patron and atlas screens, and calm/rough-water rendering across all seven seas. `tests/visual.html` is a clearly labeled renderer/transition fixture that does not read or write captain saves. It can preview player and nearby-ship destruction, pause or step the animation, and render the actual breaking effect with an OfflineAudioContext to check that its early breaking and late water signals are present without clipping.
 
 Crescent Seas uses its own engine, procedural models, vector illustrations, and synthesized audio. Boarding resolves as a crew contest; it does not include a separate sword-fighting game.

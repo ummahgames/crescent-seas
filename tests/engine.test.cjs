@@ -140,7 +140,7 @@ test('delivered artifacts apply bounded bonuses and persist with the ship profil
 });
 
 test('defeat recovers to a safe harbor without destroying progression or creating negative balances', () => {
-  const s = fresh(); s.player.hull = -1; s.player.upgrades.sails = 2; s.cargo = 100; s.gold = 20; C.step(s);
+  const s = fresh(); s.player.hull = -1; s.player.upgrades.sails = 2; s.cargo = 100; s.gold = 20; C.step(s);assert.equal(s.phase,'sinking');advance(s,C.SINK_DURATION+.1);
   assert.equal(s.stats.defeats, 1); assert.ok(s.player.hull > 0); assert.equal(s.player.upgrades.sails, 2); assert.equal(s.gold, 16); assert.equal(s.cargo, 40); assert.ok(s.player.invulnerable > 0);
 });
 test('captain-profile saves preserve equipment, level and currency while generating a fresh world', () => {
@@ -320,4 +320,34 @@ test('new environmental encounters stay out of compact saves and regenerate safe
   s.weather=Array(50).fill(s.weather[0]);s.contacts={test:Infinity};s.hazards=Array(50).fill(s.hazards[0]);assert.equal(C.serialize(s),before);
   const loaded=C.restore(before);assert.ok(loaded.hazards.length<=6);assert.ok(loaded.weather.length<=3);assert.equal(loaded.worldId,s.worldId);
   const snapshot=JSON.stringify({wind:loaded.wind,weather:loaded.weather});loaded.phase='port';advance(loaded,3);assert.equal(JSON.stringify({wind:loaded.wind,weather:loaded.weather}),snapshot);
+});
+
+test('player loss breaks and sinks at sea before one rescue returns the captain to harbor',()=>{
+  const s=fresh();s.ships=[];s.weather=[];s.atmosphere.disabled=true;s.player.upgrades.sails=2;s.gold=20;s.cargo=100;const at={x:s.player.x,z:s.player.z};s.player.hull=0;
+  C.step(s);assert.equal(s.phase,'sinking');assert.equal(s.wrecks.length,1);assert.equal(s.wrecks[0].id,'player');assert.equal(s.events.filter(e=>e.type==='sink').length,1);assert.equal(s.stats.defeats,1);assert.equal(s.gold,16);assert.equal(s.cargo,40);
+  advance(s,2,{helm:1,row:true,fire:true,dock:true});assert.equal(s.phase,'sinking');assert.deepEqual({x:s.player.x,z:s.player.z},at);assert.ok(s.wrecks[0].age>=1.9);assert.equal(C.fire(s,s.player,1),false);assert.equal(C.board(s),false);assert.equal(C.dock(s),null);assert.equal(C.travel(s,'redsea'),false);
+  advance(s,C.SINK_DURATION);assert.equal(s.phase,'port');assert.equal(s.port,s.checkpoint);assert.equal(s.stats.defeats,1);assert.equal(s.gold,16);assert.equal(s.player.hull,C.maxHull(s.player));assert.equal(s.player.upgrades.sails,2);assert.equal(s.wrecks.length,0);
+});
+
+test('destroyed hostile and friendly boats leave animated wrecks; captured prizes do not',()=>{
+  const s=chapter(1),enemy=s.ships[0];C.defeatShip(s,enemy);assert.equal(s.wrecks.length,1);assert.equal(s.wrecks[0].class,enemy.class);assert.ok(enemy.removed);advance(s,2);assert.ok(s.wrecks[0].age>1);advance(s,5);assert.equal(s.wrecks.length,0);
+  const captured=chapter(4);C.defeatShip(captured,captured.ships.find(v=>v.role==='convoy'),true);assert.equal(captured.wrecks.length,0);assert.ok(!captured.events.some(e=>e.type==='sink'));
+  const escort=chapter(2);C.defeatShip(escort,escort.ships.find(v=>v.role==='escort'));assert.equal(escort.wrecks.length,1);assert.equal(escort.escortLost,true);
+});
+
+test('oars are independent of canvas; furled sails give no hidden wind propulsion',()=>{
+  function sail(setting,row){const s=fresh();s.ships=[];s.weather=[];s.hazards=[];s.atmosphere.disabled=true;s.wind={angle:0,strength:18};Object.assign(s.player,{x:0,z:0,angle:Math.PI,sail:setting,speed:0});advance(s,8,{row});return s;}
+  const full=sail(1,false),furled=sail(-1,false),rowFull=sail(1,true),rowFurled=sail(-1,true);
+  assert.equal(C.polar(Math.PI,0,'sloop'),0);assert.ok(full.player.speed<.001);assert.ok(furled.player.speed<.001);assert.ok(rowFurled.player.speed>rowFull.player.speed*2);assert.ok(rowFurled.player.z<-20);assert.ok(rowFurled.player.oarStamina<100);
+  const coasting=sail(-1,false);coasting.player.speed=20;advance(coasting,8);assert.ok(coasting.player.speed<1,'canvas down allows momentum to decay');
+});
+
+test('rowing capability and crew endurance distinguish galleys, light craft and sailing ships',()=>{
+  const s=fresh();assert.equal(C.canRow(s),true);s.player.class='brig';assert.equal(C.canRow(s),false);s.worldId='easternmed';assert.equal(C.canRow(s),true);s.player.class='frigate';assert.equal(C.canRow(s),false);
+  s.player.class='sloop';s.player.crew=C.maxCrew(s.player);s.ships=[];s.weather=[];s.hazards=[];s.atmosphere.disabled=true;Object.assign(s.player,{x:0,z:0,sail:-1,angle:Math.PI});advance(s,27,{row:true});assert.ok(s.player.oarsTired);assert.equal(s.player.oarActive,false);advance(s,12,{row:false});assert.ok(s.player.oarStamina>25);assert.equal(s.player.oarsTired,false);
+});
+
+test('saving during loss preserves the paid loss and recovery ship without storing the cinematic',()=>{
+  const s=fresh();s.gold=500;s.cargo=100;s.player.hull=0;C.step(s);const text=C.serialize(s),loaded=C.restore(text);
+  assert.equal(loaded.gold,400);assert.equal(loaded.cargo,40);assert.equal(loaded.stats.defeats,1);assert.equal(loaded.player.hull,C.maxHull(loaded.player));assert.ok(!JSON.parse(text).wrecks);assert.notEqual(loaded.phase,'sinking');
 });

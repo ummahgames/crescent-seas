@@ -20,9 +20,11 @@
     const x = norm([z[2], 0, -z[0]]), y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
     return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -x.reduce((a, v, i) => a + v * eye[i], 0), -y.reduce((a, v, i) => a + v * eye[i], 0), -z.reduce((a, v, i) => a + v * eye[i], 0), 1]);
   }
-  function model(x = 0, y = 0, z = 0, a = 0, scale = 1, roll = 0) {
+  function model(x = 0, y = 0, z = 0, a = 0, scale = 1, roll = 0, pitch = 0) {
     const c = Math.cos(a), s = Math.sin(a), cr = Math.cos(roll), sr = Math.sin(roll);
-    return new Float32Array([c * cr * scale, sr * scale, -s * cr * scale, 0, -c * sr * scale, cr * scale, s * sr * scale, 0, s * scale, 0, c * scale, 0, x, y, z, 1]);
+    const matrix=new Float32Array([c * cr * scale, sr * scale, -s * cr * scale, 0, -c * sr * scale, cr * scale, s * sr * scale, 0, s * scale, 0, c * scale, 0, x, y, z, 1]);
+    if(!pitch)return matrix;
+    const cp=Math.cos(pitch),sp=Math.sin(pitch);return multiply(matrix,new Float32Array([1,0,0,0,0,cp,sp,0,0,-sp,cp,0,0,0,0,1]));
   }
   class Geometry {
     constructor() { this.data = []; }
@@ -88,21 +90,21 @@
       g.cone(0, 6, z, .6, h, 0x59452f, 6, .28);
       const widths = cls === 'sloop' ? [b * 1.5, b * 1.15] : [b * 1.65, b * 1.3];
       if(fittings.rig==='lateen'||fittings.rig==='galley'){
-        const y=6+h*.91;g.beam([-b*.7,y,z-2],[b*.9,10,z+l*.21],.4,dark);if(!reef){g.tri([-b*.7,y-.7,z-1.5],[b*.9,11,z+l*.21],[-b*.6,10,z+l*.21],sail);if(!torn)g.tri([-b*.7,y-.7,z-1.5],[-b*.6,10,z+l*.21],[-b*.72,y*.6,z+2],sail);}
+        const y=6+h*.91;g.beam([-b*.7,y,z-2],[b*.9,10,z+l*.21],.4,dark);if(fittings.sail!==-1){const shrink=reef?.48:1,tri=(a,b,c)=>g.tri(...[a,b,c].map(p=>[p[0],10+(p[1]-10)*shrink,p[2]]),sail);tri([-b*.7,y-.7,z-1.5],[b*.9,11,z+l*.21],[-b*.6,10,z+l*.21]);if(!torn)tri([-b*.7,y-.7,z-1.5],[-b*.6,10,z+l*.21],[-b*.72,y*.6,z+2]);}
       }else for (let j = 0; j < 2; j++) {
         const top = 6 + h * (.91 - j * .38), height = h * .34 * (reef ? .27 : 1), width = widths[j];
         g.beam([-width / 2 - .6, top, z], [width / 2 + .6, top, z], .4, dark);
         const columns = 6, rows = 3;
         const p = (u, v) => [(u - .5) * width * (1 - v * .18), top - v * height, z + Math.sin(u * Math.PI) * Math.sin(v * Math.PI * .8) * 2.5 + .4];
-        for (let a = 0; a < columns; a++) for (let r = 0; r < rows; r++) if (!torn || (a + r * 3) % 4 !== 1) g.quad(p(a / columns, r / rows), p((a + 1) / columns, r / rows), p((a + 1) / columns, (r + 1) / rows), p(a / columns, (r + 1) / rows), sail);
+        for (let a = 0; a < columns; a++) for (let r = 0; r < rows; r++) if(fittings.sail!==-1&&(!torn || (a + r * 3) % 4 !== 1)) g.quad(p(a / columns, r / rows), p((a + 1) / columns, r / rows), p((a + 1) / columns, (r + 1) / rows), p(a / columns, (r + 1) / rows), sail);
         if (faction === 'enemy') g.box(0, top - height * .65, z + 2.9, .6, height * .35, .04, 0xd7ad78);
       }
       for (const sign of [-1, 1]) { g.beam([0, h * .8, z], [b * sign * .5, 6, z - l * .13], .12, 0x554c3e); g.beam([0, h + 5, z], [b * sign * .42, 6, z + l * .2], .1, 0x554c3e); }
       g.quad([0, h + 5, z], [0, h + 8.5, z], [7, h + 7, z], [5, h + 4.5, z], faction==='enemy'?0x612e2b:fittings.flag?parseInt(fittings.flag.slice(1),16):0x1f6967);
     }
-    if(fittings.rig==='galley')for(const sign of [-1,1])for(let i=0;i<10;i++)g.beam([sign*b*.4,3,-l*.3+i*l*.065],[sign*(b*.6+9),.2,-l*.3+i*l*.065-4],.25,0xb59b65);
+
     g.beam([0, 6, l * .5], [0, 12, l * .85], .45, trim);
-    if (!reef) g.tri([0, 12, l * .8], [0, 29, l * .27], [0, 10, l * .26], sail);
+    if(!reef&&fittings.sail!==-1)g.tri([0, 12, l * .8], [0, 29, l * .27], [0, 10, l * .26], sail);
     g.box(0, 7, -l * .23, 1.3, 1.5, 1.3, 0x855e37);
     return g;
   }
@@ -228,15 +230,15 @@
         this.draw(l.kind === 'relic' ? this.relic : l.kind === 'cargo' ? this.crate : this.chest, model(l.x, .3 + Math.sin(t * 1.7 + l.bob) * .7, l.z, l.bob + (l.kind === 'relic' ? t*.4 : Math.sin(t) * .05)));
         if (l.mission) this.draw(this.ring, model(l.x, 0, l.z, t * .15, .48), .75);
       }
-      const allShips = [p, ...s.ships];
+      const allShips=[...(s.phase==='sinking'?[]:[p]),...s.ships.filter(v=>!v.removed&&v.hull>0)];
       for (const v of allShips) {
         if (Math.hypot(v.x - this.follow.x, v.z - this.follow.z) > 1600) continue;
         const faction = v.id === 'player' ? 'player' : v.friendly ? 'friendly' : 'enemy';
         const chop=C.windAt(s,v).hazard,roll=Math.sin(t*1.7+v.x*.04)*(.025+chop*.065);
         const tint = !menu && v.id === 'player' && v.invulnerable > 0 && Math.sin(t * 8) > .6 ? [1.3, 1.3, 1.15] : [1, 1, 1];
-        const fittings=v.id==='player'?{...v.upgrades,livery:v.livery,rig:w.rig,flag:C.FACTIONS[v.patron]?.color}:{};
-        const key = `${v.class}-${faction}${v.sail ? '' : '-reef'}${v.sails < 40 ? '-torn' : ''}${v.id==='player'?`-${v.livery}-${fittings.copper||0}-${fittings.hull||0}-${w.rig}-${v.patron}`:''}`;
-        if (!this.shipMeshes[key]) this.shipMeshes[key] = this.upload(shipGeometry(v.class, faction, !v.sail, v.sails < 40, fittings));
+        const fittings={sail:v.sail,...(v.id==='player'?{...v.upgrades,livery:v.livery,rig:w.rig,flag:C.FACTIONS[v.patron]?.color}:{})};
+        const key = `${v.class}-${faction}-sail${v.sail}${v.sails < 40 ? '-torn' : ''}${v.id==='player'?`-${v.livery}-${fittings.copper||0}-${fittings.hull||0}-${w.rig}-${v.patron}`:''}`;
+        if (!this.shipMeshes[key]) this.shipMeshes[key] = this.upload(shipGeometry(v.class,faction,v.sail!==1, v.sails < 40, fittings));
         this.draw(this.shipMeshes[key], model(v.x,.65+C.seaHeight(s,v,t), v.z, v.angle, menu && v.id === 'player' ? 1.8 : 1, roll), 1, 0, tint);
         if (v.hull < C.maxHull(v) * .4 && Math.random() < dt * 5) this.particles.push({ x: v.x, y: 5, z: v.z, vx: 3, vz: -1, vy: 6, age: 0, life: 2, type: 'smoke' });
       }
@@ -245,6 +247,36 @@
         this.draw(this.ball, model(shot.x, y, shot.z, 0, shot.ammo === 'chain' ? 1 : .75));
       }
       const fx = new Geometry();
+      // Oars are animated separately from the cached ship mesh.
+      for(const v of allShips)if(C.canRow(s,v)&&C.dist(v,p)<900){
+        const spec=C.CLASSES[v.class],count=w.rig==='galley'&&(v.id==='player'||v.friendly)?10:3;
+        const sweep=v.oarActive?Math.sin(t*3.8)*6:0,along=[Math.sin(v.angle),Math.cos(v.angle)],across=[Math.cos(v.angle),-Math.sin(v.angle)];
+        for(const sign of [-1,1])for(let j=0;j<count;j++){
+          const z=-spec.length*.28+j*spec.length*.56/Math.max(1,count-1),base=spec.beam*.43,reach=spec.beam*.6+7;
+          const point=(x,z,y)=>[v.x+across[0]*x+along[0]*z,y+C.seaHeight(s,v,t),v.z+across[1]*x+along[1]*z];
+          fx.beam(point(sign*base,z,3),point(sign*reach,z+sweep,Math.max(.1,Math.cos(t*3.8))*(v.oarActive?1.4:0)),.3,0xb99d69);
+        }
+      }
+      for(const wreck of s.wrecks||[]){
+        const q=clampSea(wreck.age/wreck.life),split=clampSea((q-.1)/.4),spec=C.CLASSES[wreck.class],player=wreck.id==='player',faction=player?'player':wreck.friendly?'friendly':'enemy';
+        const key=`wreck-${wreck.class}-${player?w.rig:'square'}-${wreck.livery||''}-${wreck.patron||''}`;
+        if(!this.shipMeshes[key+'-bow']){
+          const full=shipGeometry(wreck.class,faction,false,true,{...wreck.upgrades,livery:wreck.livery,rig:player?w.rig:undefined,flag:C.FACTIONS[wreck.patron]?.color});
+          for(const part of ['bow','stern','rig']){
+            const geometry=new Geometry();for(let j=0;j<full.data.length;j+=27){const y=(full.data[j+1]+full.data[j+10]+full.data[j+19])/3,z=(full.data[j+2]+full.data[j+11]+full.data[j+20])/3;if(part==='rig'?y>=10:y<10&&(part==='bow'?z>=0:z<0))geometry.data.push(...full.data.slice(j,j+27));}this.shipMeshes[key+'-'+part]=this.upload(geometry);
+          }
+        }
+        for(const [part,sign] of [['bow',1],['stern',-1]]){
+          const drift=sign*split*6,y=.6-q*q*24,roll=sign*split*.38+Math.sin(wreck.age*19)*.025*(1-q);
+          this.draw(this.shipMeshes[key+'-'+part],model(wreck.x+Math.sin(wreck.angle)*drift,y,wreck.z+Math.cos(wreck.angle)*drift,wreck.angle,1,roll,sign*split*.6));
+        }
+        this.draw(this.shipMeshes[key+'-rig'],model(wreck.x,1-q*q*26,wreck.z,wreck.angle+.2*split,1,split*1.18,split*.4));
+        for(let j=0;j<9;j++){
+          const a=j*2.4,r=3+split*(8+j),x=wreck.x+Math.sin(a)*r,z=wreck.z+Math.cos(a)*r,y=C.seaHeight(s,{x,z},t)+.5-Math.max(0,q-.72)*35;
+          fx.box(x,y,z,.5,.5,3+j%3,0x99784f);
+        }
+        const r=4+q*28;for(let j=0;j<32;j++){const a=j/32*C.TAU,b=(j+.7)/32*C.TAU,col=w.palette.deep.map((v,k)=>v*q+[.7,.8,.72][k]*(1-q));fx.quad([wreck.x+Math.sin(a)*r,.9,wreck.z+Math.cos(a)*r],[wreck.x+Math.sin(b)*r,.9,wreck.z+Math.cos(b)*r],[wreck.x+Math.sin(b)*(r+1.4),.9,wreck.z+Math.cos(b)*(r+1.4)],[wreck.x+Math.sin(a)*(r+1.4),.9,wreck.z+Math.cos(a)*(r+1.4)],col);}
+      }
       // Short, breaking wave ribbons appear in patches and travel with the wind.
       const dx=Math.sin(s.wind.angle),dz=Math.cos(s.wind.angle),rough=clampSea((localWind.strength-6)/24+storm*.5);
       const gx=Math.floor(p.x/95),gz=Math.floor(p.z/95);
