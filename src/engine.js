@@ -156,7 +156,7 @@
     for(let j=0;j<6;j++){
       const i=w.islands[(j*3+2)%w.islands.length],jitter=(skyRandom(s)-.5)*.6,q=safePosition(s,i.x+i.r*(1.6+jitter),i.z+(j%2?160:-160)+jitter*i.r*.7);
       if(w.islands.some(i=>i.port&&dist(q,i.port)<210)||dist(q,s.player)<300)continue;
-      s.hazards.push({...q,id:`danger-${j}`,kind:j<4?'reef':'current',r:j<4?32+j*5:130,angle:w.wind+(j%2?1.2:-1.2),strength:3+j*.35,seed:j*17+9});
+      s.hazards.push({...q,id:`danger-${j}`,kind:j<4?'reef':'current',r:j<4?32+j*5:420,angle:w.wind+(j%2?1.2:-1.2),strength:j<4?3+j*.35:6+(j-4)*1.5,seed:j*17+9});
     }
     s.weather=[];spawnStorm(s,true);
     s.voyage=generateVoyage(s,'prize',home.id,intro);s.complete=!intro;
@@ -270,8 +270,8 @@
     for(const cell of s.weather){const q=1-dist(p,cell)/cell.r,power=stormPower(cell);gust=Math.max(gust,clamp(q+.15,0,1)*12*power);const local=clamp(q/.8,0,1)*power;if(local>hazard){hazard=local;shift=Math.sin(s.time*.13+cell.seed)*.6*local;}}
     return {angle:s.wind.angle+shift,strength:clamp(s.wind.strength+gust,3,38),hazard};
   }
-  function currentAt(s,p){let x=0,z=0;for(const h of s.hazards||[])if(h.kind==='current'){const q=clamp(1-dist(p,h)/h.r,0,1),strength=q*h.strength*(.75+.25*Math.sin(s.time*.1+h.seed));x+=Math.sin(h.angle)*strength;z+=Math.cos(h.angle)*strength;}return{x,z};}
-  function seaHeight(s,p,t=s.time){const wind=windAt(s,p),along=p.x*Math.sin(s.wind.angle)+p.z*Math.cos(s.wind.angle),amp=.35+wind.strength*.025+wind.hazard*1.1;return Math.sin(along*.043-t*1.7)*amp+Math.cos(p.x*.026-p.z*.031-t*.9)*amp*.45;}
+  function currentAt(s,p){let x=0,z=0;for(const h of s.hazards||[])if(h.kind==='current'){const q=clamp(1-dist(p,h)/h.r,0,1),strength=q*h.strength*(.75+.25*Math.sin(s.time*.1+h.seed));x+=Math.sin(h.angle)*strength;z+=Math.cos(h.angle)*strength;}const swell=windAt(s,p).hazard*.9;x+=Math.sin(s.wind.angle)*swell;z+=Math.cos(s.wind.angle)*swell;return{x,z};}
+  function seaHeight(s,p,t=s.time){const wind=windAt(s,p),along=p.x*Math.sin(s.wind.angle)+p.z*Math.cos(s.wind.angle),amp=.35+wind.strength*.025+wind.hazard*4.5;return Math.sin(along*.043-t*1.7)*amp+Math.cos(p.x*.026-p.z*.031-t*.9)*amp*.45+Math.sin(along*.09-t*2.2)*wind.hazard*1.4;}
   function contactDamage(s,v,impact,label){
     if(v.hull<=0||v.invulnerable>0)return;
     const amount=Math.min(36,1.5+impact*impact*.025);v.hull-=amount;
@@ -287,27 +287,27 @@
   }
   function oarSpeed(s,v){
     const galley=world(s).rig==='galley'&&(v.id==='player'||v.friendly);
-    if(galley&&v.class==='brig')return 13;
-    if(v.class==='sloop')return galley?15:8;
+    if(galley&&v.class==='brig')return 16;
+    if(v.class==='sloop')return galley?18:11;
     return 0;
   }
   function canRow(s,v=s.player){return oarSpeed(s,v)>0;}
   function sailingTarget(s,v,w=windAt(s,v)){
     const spec=CLASSES[v.class],u=v.upgrades||{},patron=FACTIONS[v.patron]||{},hullFactor=clamp(v.hull/maxHull(v),.15,1);
-    const area=v.sail===-1?0:v.sail===0?.49:1;
+    const area=v.sail===-1?0:v.sail===0?.65:1;
     return spec.speed*polar(v.angle,w.angle,v.class)*(w.strength/13)**.55*area*(.32+.68*v.sails/100)*(.65+.35*hullFactor)*(1+(u.sails||0)*.12+(v.relics?.speed||0)+(patron.speed||0))*clamp(v.crew/(spec.crew*.35),.45,1);
   }
   function sailShip(s, v, helm, sail, dt) {
     const spec=CLASSES[v.class],w=windAt(s,v),u=v.upgrades||{},patron=FACTIONS[v.patron]||{};
     v.sail=[-1,0,1].includes(sail)?sail:1;
     v.oarStamina??=100;
-    if(v.oarsTired&&v.oarStamina>=25)v.oarsTired=false;
-    const rowing=!!v.rowing&&canRow(s,v)&&!v.oarsTired&&v.crew>=4;
-    v.oarStamina=clamp(v.oarStamina+dt*(rowing?-4:3),0,100);if(v.oarStamina===0)v.oarsTired=true;
+    if(v.oarsTired&&v.oarStamina>=30)v.oarsTired=false;
+    const rowing=!!v.rowing&&canRow(s,v)&&v.crew>=4;
+    v.oarStamina=clamp(v.oarStamina+dt*(rowing?(v.oarsTired?3.5:-1.4):9),0,100);if(v.oarStamina===0)v.oarsTired=true;
     v.oarActive=rowing;
     const headwind=(1-Math.cos(angleDiff(v.angle,w.angle)))*.5;
-    const resistance=v.sail===-1?1:1-headwind*(v.sail===1?.65:.28);
-    const rowTarget=rowing?oarSpeed(s,v)*resistance*(.45+.55*v.oarStamina/100)*clamp(v.crew/spec.crew,.2,1)*(1-w.hazard*.55):0;
+    const resistance=v.sail===-1?1:1-headwind*(v.sail===1?.25:.1);
+    const rowTarget=rowing?oarSpeed(s,v)*resistance*(v.oarsTired?.78:.85+.15*v.oarStamina/100)*clamp(v.crew/spec.crew,.2,1)*(1-w.hazard*.3):0;
     const target=Math.max(sailingTarget(s,v,w),rowTarget);
     v.speed+=(target-v.speed)*Math.min(1,dt*(v.sail===-1&&!rowing?.5:.72));
     const turn=spec.turn*(v.sail===1?1:1.42)*(1+(u.copper||0)*.14+(patron.turn||0))*(.45+.55*v.sails/100);

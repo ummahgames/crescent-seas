@@ -157,8 +157,12 @@
     }
     return g;
   }
-  const vertex = `precision mediump float;attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uVP;uniform mat4 uModel;uniform float uTime;uniform float uWater;uniform vec4 uSea;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;void main(){vec4 world=uModel*vec4(aPosition,1.);if(uWater>.5)world.y+=sin(dot(world.xz,uSea.xy)*.043-uTime*1.7)*(.35+uSea.z*.025+uSea.w*1.1)+cos(world.x*.026-world.z*.031-uTime*.9)*(.35+uSea.z*.025+uSea.w*1.1)*.45;vWorld=world.xyz;vNormal=mat3(uModel)*aNormal;vColor=aColor;gl_Position=uVP*world;}`;
-  const fragment = `precision mediump float;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;uniform float uTime;uniform float uWater;uniform float uAlpha;uniform vec3 uEye;uniform vec4 uIslands[12];uniform vec3 uTint;uniform vec3 uDeep;uniform vec3 uShallow;uniform vec3 uSky;uniform vec4 uSea;void main(){vec3 color;vec3 light=normalize(vec3(-.55,1.,.35));if(uWater>.5){float depth=1.;for(int i=0;i<12;i++){if(uIslands[i].z>.1){float d=length((vWorld.xz-uIslands[i].xy)/uIslands[i].zw);depth=min(depth,smoothstep(.85,1.95,d));}}float waves=sin(vWorld.x*.105+sin(vWorld.z*.09+uTime*.3)*1.4+uTime*.9)*sin(vWorld.z*.13-uTime*.65);float ripples=sin(vWorld.x*.28+vWorld.z*.17+uTime*1.2)*.5+.5;vec3 n=normalize(vec3(cos(vWorld.x*.075+uTime)*.13,1.,sin(vWorld.z*.08-uTime)*.17));vec3 view=normalize(uEye-vWorld);float spec=pow(max(dot(reflect(-light,n),view),0.),60.);color=mix(uShallow,uDeep,depth);float along=dot(vWorld.xz,uSea.xy),across=dot(vWorld.xz,vec2(uSea.y,-uSea.x));float crest=smoothstep(.94,1.,sin(along*.065-uTime*1.5+sin(across*.025)*1.2));float patches=smoothstep(.25,.8,sin(across*.07+uTime*.45))*smoothstep(.15,.65,sin(along*.009+uTime*.2));color=mix(color,vec3(.69,.82,.78),crest*patches*clamp((uSea.z-6.)*.012+uSea.w*.3,.02,.6));color+=waves*.016+smoothstep(.76,1.,ripples)*.019+spec*vec3(.34,.38,.29);float shore=(1.-smoothstep(0.,.13,abs(depth-.16)));color+=shore*(.07+.03*sin(uTime+vWorld.x*.2));}else{float diffuse=max(dot(normalize(vNormal),light),0.);diffuse=floor(diffuse*5.)/5.;color=vColor*(.57+diffuse*.46)*uTint;}float fog=1.-exp(-pow(length(vWorld-uEye)/1750.,2.));color=mix(color,uSky,min(fog,.9));gl_FragColor=vec4(color,uAlpha);}`;
+  const seaShader = `uniform vec4 uStorms[3];uniform vec2 uWaterCenter;
+float seaRough(vec2 p){float h=0.;for(int i=0;i<3;i++){if(uStorms[i].z>0.)h=max(h,clamp((1.-distance(p,uStorms[i].xy)/uStorms[i].z)/.8,0.,1.)*uStorms[i].w);}return h;}
+float seaHeight(vec2 p){float h=seaRough(p),gust=0.;for(int i=0;i<3;i++){if(uStorms[i].z>0.)gust=max(gust,clamp(1.15-distance(p,uStorms[i].xy)/uStorms[i].z,0.,1.)*12.*uStorms[i].w);}float a=.35+clamp(uSea.z+gust,3.,38.)*.025+h*4.5;float along=dot(p,uSea.xy);return sin(along*.043-uTime*1.7)*a+cos(p.x*.026-p.y*.031-uTime*.9)*a*.45+sin(along*.09-uTime*2.2)*h*1.4;}
+`;
+  const vertex = `precision mediump float;attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uVP;uniform mat4 uModel;uniform float uTime;uniform float uWater;uniform vec4 uSea;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;${seaShader}void main(){vec4 world=uModel*vec4(aPosition,1.);if(uWater>.5)world.y+=seaHeight(world.xz);vWorld=world.xyz;vNormal=mat3(uModel)*aNormal;vColor=aColor;gl_Position=uVP*world;}`;
+  const fragment = `precision mediump float;varying vec3 vWorld;varying vec3 vNormal;varying vec3 vColor;uniform float uTime;uniform float uWater;uniform float uAlpha;uniform vec3 uEye;uniform vec4 uIslands[12];uniform vec3 uTint;uniform vec3 uDeep;uniform vec3 uShallow;uniform vec3 uSky;uniform vec4 uSea;${seaShader}void main(){vec3 color;vec3 light=normalize(vec3(-.55,1.,.35));if(uWater>.5){if(uWater<1.5&&max(abs(vWorld.x-uWaterCenter.x),abs(vWorld.z-uWaterCenter.y))<899.)discard;float rough=seaRough(vWorld.xz);float depth=1.;for(int i=0;i<12;i++){if(uIslands[i].z>.1){float d=length((vWorld.xz-uIslands[i].xy)/uIslands[i].zw);depth=min(depth,smoothstep(.85,1.95,d));}}float waves=sin(vWorld.x*.105+sin(vWorld.z*.09+uTime*.3)*1.4+uTime*.9)*sin(vWorld.z*.13-uTime*.65);float ripples=sin(vWorld.x*.28+vWorld.z*.17+uTime*1.2)*.5+.5;float h=seaHeight(vWorld.xz);vec3 n=normalize(vec3((h-seaHeight(vWorld.xz+vec2(1.,0.))),1.,(h-seaHeight(vWorld.xz+vec2(0.,1.)))));vec3 view=normalize(uEye-vWorld);float spec=pow(max(dot(reflect(-light,n),view),0.),60.);color=mix(uShallow,uDeep,depth);float along=dot(vWorld.xz,uSea.xy),across=dot(vWorld.xz,vec2(uSea.y,-uSea.x));float crest=smoothstep(.94,1.,sin(along*.065-uTime*1.5+sin(across*.025)*1.2));float patches=smoothstep(.25,.8,sin(across*.07+uTime*.45))*smoothstep(.15,.65,sin(along*.009+uTime*.2));color=mix(color,vec3(.69,.82,.78),crest*patches*clamp((uSea.z-6.)*.012+rough*.6,.02,.6));color*=(1.-rough*.22)*(.82+.25*max(dot(n,light),0.));color+=waves*.016+smoothstep(.76,1.,ripples)*.019+spec*vec3(.34,.38,.29);float shore=(1.-smoothstep(0.,.13,abs(depth-.16)));color+=shore*(.07+.03*sin(uTime+vWorld.x*.2));}else{float diffuse=max(dot(normalize(vNormal),light),0.);diffuse=floor(diffuse*5.)/5.;color=vColor*(.57+diffuse*.46)*uTint;}float fog=1.-exp(-pow(length(vWorld-uEye)/1750.,2.));color=mix(color,uSky,min(fog,.9));gl_FragColor=vec4(color,uAlpha);}`;
   class Renderer {
     constructor(canvas) {
       this.canvas = canvas; this.gl = canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -168,13 +172,16 @@
       this.program = gl.createProgram(); gl.attachShader(this.program, shader(gl.VERTEX_SHADER, vertex)); gl.attachShader(this.program, shader(gl.FRAGMENT_SHADER, fragment)); gl.linkProgram(this.program);
       if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(this.program));
       gl.useProgram(this.program); this.u = {};
-      for (const name of ['VP', 'Model', 'Time', 'Water', 'Alpha', 'Eye','Islands','Tint','Deep','Shallow','Sky','Sea']) this.u[name] = gl.getUniformLocation(this.program, `u${name}${name === 'Islands' ? '[0]' : ''}`);
+      for (const name of ['VP', 'Model', 'Time', 'Water', 'Alpha', 'Eye','Islands','Tint','Deep','Shallow','Sky','Sea','Storms','WaterCenter']) this.u[name] = gl.getUniformLocation(this.program, `u${name}${['Islands','Storms'].includes(name) ? '[0]' : ''}`);
       this.attributes = ['Position', 'Normal', 'Color'].map(n => gl.getAttribLocation(this.program, `a${n}`));
       gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       this.worldId=null;this.land=null;
       const water = new Geometry(), size = 8000, n = 140;
       for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const x = (i / n - .5) * size, z = (j / n - .5) * size, d = size / n; water.quad([x, -1, z], [x + d, -1, z], [x + d, -1, z + d], [x, -1, z + d], 0x167d86); }
-      this.water = this.upload(water); this.shipMeshes = {};
+      this.water = this.upload(water);
+      const nearbyWater=new Geometry(),step=10;
+      for(let z=-900;z<900;z+=step)for(let x=-900;x<900;x+=step)nearbyWater.quad([x,-1,z],[x+step,-1,z],[x+step,-1,z+step],[x,-1,z+step],0x167d86);
+      this.nearbyWater=this.upload(nearbyWater); this.shipMeshes = {};
       for (const cls of Object.keys(C.CLASSES)) for (const faction of ['player', 'enemy', 'friendly']) this.shipMeshes[`${cls}-${faction}`] = this.upload(shipGeometry(cls, faction));
       const ball = new Geometry(); ball.sphere(0, 0, 0, 1, 0x242d2b, [1, 1, 1], 6, 3); this.ball = this.upload(ball);
       const crate = new Geometry(); crate.box(0, 0, 0, 5, 4, 5, 0xad7c45); crate.box(0, 1.2, 0, 5.2, .55, 5.2, 0x4a5c50); crate.box(0, 3, 0, 5.2, .5, 5.2, 0xe0b868); this.crate = this.upload(crate);
@@ -220,7 +227,11 @@
       this.vp = multiply(perspective(Math.PI / 4, this.canvas.width / this.canvas.height, 2, 6000), lookAt(this.eye, target));
       const sky=w.palette.sky.map(v=>v*(1-storm*.38));
       gl.clearColor(...sky,1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.useProgram(this.program);
-      gl.uniformMatrix4fv(this.u.VP, false, this.vp); gl.uniform1f(this.u.Time, t); gl.uniform3fv(this.u.Eye, this.eye); gl.uniform4fv(this.u.Islands,new Float32Array([...w.islands.flatMap(i=>{const p=C.landOutline(i),xs=p.map(p=>p.x),zs=p.map(p=>p.z),x0=Math.min(...xs),x1=Math.max(...xs),z0=Math.min(...zs),z1=Math.max(...zs);return[(x0+x1)/2,(z0+z1)/2,(x1-x0)/2,(z1-z0)/2];}),...Array((12-w.islands.length)*4).fill(0)]));gl.uniform3fv(this.u.Deep,w.palette.deep);gl.uniform3fv(this.u.Shallow,w.palette.shallow);gl.uniform3fv(this.u.Sky,sky);gl.uniform4fv(this.u.Sea,[Math.sin(s.wind.angle),Math.cos(s.wind.angle),localWind.strength,storm]);
+      gl.uniformMatrix4fv(this.u.VP, false, this.vp); gl.uniform1f(this.u.Time, t); gl.uniform3fv(this.u.Eye, this.eye); gl.uniform4fv(this.u.Islands,new Float32Array([...w.islands.flatMap(i=>{const p=C.landOutline(i),xs=p.map(p=>p.x),zs=p.map(p=>p.z),x0=Math.min(...xs),x1=Math.max(...xs),z0=Math.min(...zs),z1=Math.max(...zs);return[(x0+x1)/2,(z0+z1)/2,(x1-x0)/2,(z1-z0)/2];}),...Array((12-w.islands.length)*4).fill(0)]));gl.uniform3fv(this.u.Deep,w.palette.deep);gl.uniform3fv(this.u.Shallow,w.palette.shallow);gl.uniform3fv(this.u.Sky,sky);gl.uniform4fv(this.u.Sea,[Math.sin(s.wind.angle),Math.cos(s.wind.angle),s.wind.strength,storm]);
+      const waterX=Math.round(this.follow.x/10)*10,waterZ=Math.round(this.follow.z/10)*10;
+      gl.uniform2fv(this.u.WaterCenter,[waterX,waterZ]);
+      gl.uniform4fv(this.u.Storms,new Float32Array(Array.from({length:3},(_,j)=>{const cell=s.weather[j];return cell?[cell.x,cell.z,cell.r,C.stormPower(cell)]:[0,0,0,0];}).flat()));
+      this.draw(this.nearbyWater,model(waterX,0,waterZ),1,2);
       this.draw(this.water,identity(),1,1);this.draw(this.land,identity(),1,0,[1-storm*.25,1-storm*.21,1-storm*.17]);
       // Port mooring circles and the golden mission marker.
       for(const i of w.islands)if(i.port){const p=C.harborPoint(i,25);this.draw(this.ring,model(p.x,0,p.z,t*.035,1.6),.48);}
@@ -283,22 +294,30 @@
       for(let ix=-5;ix<=5;ix++)for(let iz=-5;iz<=5;iz++){
         const x=(gx+ix)*95,z=(gz+iz)*95,seed=Math.sin((gx+ix)*127.1+(gz+iz)*311.7)*43758.5453,f=seed-Math.floor(seed);
         if(f>.22+rough*.38)continue;
+        const localRough=clampSea((s.wind.strength-6)/24+C.windAt(s,{x,z}).hazard*.8);
         const age=((t+f*37)%11)/11,fade=Math.sin(Math.PI*clampSea((age-.2)/.55));if(age<.2||age>.75)continue;
         const cx=x+dx*age*65,cz=z+dz*age*65;if(C.islands(s).some(i=>C.landDistance({x:cx,z:cz},i)<12))continue;
         const span=20+f*34,color=w.palette.deep.map((v,j)=>v*(1-fade*.55)+[.75,.85,.79][j]*fade*.55);
         for(let j=0;j<9;j++){
           const a=(j/9-.5)*span,b=((j+1)/9-.5)*span;
-          const point=(u,offset)=>{const bend=Math.cos(u/span*Math.PI)*3,xx=cx+dz*u+dx*(bend+offset),zz=cz-dx*u+dz*(bend+offset);return[xx,.65+C.seaHeight(s,{x:xx,z:zz},t)+fade*(.3+rough),zz];};
-          fx.quad(point(a,0),point(b,0),point(b,1+rough*1.7),point(a,1+rough*1.7),color);
+          const point=(u,offset)=>{const bend=Math.cos(u/span*Math.PI)*3,xx=cx+dz*u+dx*(bend+offset),zz=cz-dx*u+dz*(bend+offset);return[xx,.65+C.seaHeight(s,{x:xx,z:zz},t)+fade*(.3+localRough*2),zz];};
+          fx.quad(point(a,0),point(b,0),point(b,1+localRough*2.5),point(a,1+localRough*2.5),color);
         }
+      }
+      for(let j=0;j<14;j++){
+        const phase=(t*.24+j*.618)%1,x=p.x+Math.sin(j*7.3)*270+dx*(phase-.5)*90,z=p.z+Math.cos(j*4.7)*270+dz*(phase-.5)*90;
+        if(C.islands(s).some(i=>C.landDistance({x,z},i)<15))continue;
+        const y=5+C.seaHeight(s,{x,z},t),fade=Math.sin(phase*Math.PI),col=w.palette.deep.map((v,k)=>v*(1-fade*.4)+[.8,.86,.77][k]*fade*.4);
+        fx.beam([x-dx*12,y,z-dz*12],[x+dx*12,y,z+dz*12],.22,col);
+        fx.beam([x+dx*12-dz*3-dx*4,y,z+dz*12+dx*3-dz*4],[x+dx*12,y,z+dz*12],.22,col);
       }
       for(const h of s.hazards||[])if(C.dist(h,p)<1100){
         if(h.kind==='reef'){
 
           for(let j=0;j<6;j++){const a=j*2.4+h.seed,r=h.r*(.15+j*.1),x=h.x+Math.sin(a)*r,z=h.z+Math.cos(a)*r;fx.sphere(x,-1,z,4+j%3,0x626f63,[1.6,.8,1],6,3);const phase=(t*.2+j*.17)%1,rr=7+phase*9;for(let k=0;k<10;k++){const a=k/10*C.TAU,b=(k+.7)/10*C.TAU;fx.quad([x+Math.sin(a)*rr,.6,z+Math.cos(a)*rr],[x+Math.sin(b)*rr,.6,z+Math.cos(b)*rr],[x+Math.sin(b)*(rr+1),.6,z+Math.cos(b)*(rr+1)],[x+Math.sin(a)*(rr+1),.6,z+Math.cos(a)*(rr+1)],0x96bfb0);}}
-        }else for(let j=0;j<9;j++){
-          const f=(t*.1+j/9)%1,a=j*2.4,x=h.x+Math.sin(a)*h.r*.65+Math.sin(h.angle)*(f-.5)*45,z=h.z+Math.cos(a)*h.r*.65+Math.cos(h.angle)*(f-.5)*45,d=Math.sin(h.angle),e=Math.cos(h.angle),y=.8+C.seaHeight(s,{x,z},t);
-          fx.tri([x+d*8,y,z+e*8],[x-d*5+e*3,y,z-e*5-d*3],[x-d*5-e*3,y,z-e*5+d*3],0x6da49a);
+        }else for(let j=0;j<18;j++){
+          const f=(t*.16+j/18)%1,a=j*2.4,x=h.x+Math.sin(a)*h.r*.7+Math.sin(h.angle)*(f-.5)*45,z=h.z+Math.cos(a)*h.r*.7+Math.cos(h.angle)*(f-.5)*45,d=Math.sin(h.angle),e=Math.cos(h.angle),y=.8+C.seaHeight(s,{x,z},t);
+          fx.tri([x+d*8,y,z+e*8],[x-d*5+e*3,y,z-e*5-d*3],[x-d*5-e*3,y,z-e*5+d*3],0x85d8c7);
         }
       }
       if(s.gate&&Math.hypot(s.gate.x-p.x,s.gate.z-p.z)<1500){

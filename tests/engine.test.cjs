@@ -338,16 +338,34 @@ test('destroyed hostile and friendly boats leave animated wrecks; captured prize
 test('oars are independent of canvas; furled sails give no hidden wind propulsion',()=>{
   function sail(setting,row){const s=fresh();s.ships=[];s.weather=[];s.hazards=[];s.atmosphere.disabled=true;s.wind={angle:0,strength:18};Object.assign(s.player,{x:0,z:0,angle:Math.PI,sail:setting,speed:0});advance(s,8,{row});return s;}
   const full=sail(1,false),furled=sail(-1,false),rowFull=sail(1,true),rowFurled=sail(-1,true);
-  assert.equal(C.polar(Math.PI,0,'sloop'),0);assert.ok(full.player.speed<.001);assert.ok(furled.player.speed<.001);assert.ok(rowFurled.player.speed>rowFull.player.speed*2);assert.ok(rowFurled.player.z<-20);assert.ok(rowFurled.player.oarStamina<100);
+  assert.equal(C.polar(Math.PI,0,'sloop'),0);assert.ok(full.player.speed<.001);assert.ok(furled.player.speed<.001);assert.ok(rowFurled.player.speed>rowFull.player.speed*1.25);assert.ok(rowFurled.player.z<-20);assert.ok(rowFurled.player.oarStamina<100);
   const coasting=sail(-1,false);coasting.player.speed=20;advance(coasting,8);assert.ok(coasting.player.speed<1,'canvas down allows momentum to decay');
 });
 
 test('rowing capability and crew endurance distinguish galleys, light craft and sailing ships',()=>{
   const s=fresh();assert.equal(C.canRow(s),true);s.player.class='brig';assert.equal(C.canRow(s),false);s.worldId='easternmed';assert.equal(C.canRow(s),true);s.player.class='frigate';assert.equal(C.canRow(s),false);
-  s.player.class='sloop';s.player.crew=C.maxCrew(s.player);s.ships=[];s.weather=[];s.hazards=[];s.atmosphere.disabled=true;Object.assign(s.player,{x:0,z:0,sail:-1,angle:Math.PI});advance(s,27,{row:true});assert.ok(s.player.oarsTired);assert.equal(s.player.oarActive,false);advance(s,12,{row:false});assert.ok(s.player.oarStamina>25);assert.equal(s.player.oarsTired,false);
+  s.player.class='sloop';s.player.crew=C.maxCrew(s.player);s.ships=[];s.weather=[];s.hazards=[];s.atmosphere.disabled=true;Object.assign(s.player,{x:0,z:0,sail:-1,angle:Math.PI});advance(s,27,{row:true});assert.ok(s.player.oarStamina>60);assert.equal(s.player.oarActive,true);Object.assign(s.player,{x:1000,z:900,speed:0,hull:C.maxHull(s.player),sails:100,crew:C.maxCrew(s.player),oarStamina:0,oarsTired:true});advance(s,4,{row:true});assert.equal(s.player.oarActive,true);assert.ok(s.player.speed>8,'tired crew keeps useful forward motion');assert.ok(s.player.oarStamina>13,'steady strokes recover endurance');advance(s,2.1,{row:false});assert.ok(s.player.oarStamina>30);assert.equal(s.player.oarsTired,false);
 });
 
 test('saving during loss preserves the paid loss and recovery ship without storing the cinematic',()=>{
   const s=fresh();s.gold=500;s.cargo=100;s.player.hull=0;C.step(s);const text=C.serialize(s),loaded=C.restore(text);
   assert.equal(loaded.gold,400);assert.equal(loaded.cargo,40);assert.equal(loaded.stats.defeats,1);assert.equal(loaded.player.hull,C.maxHull(loaded.player));assert.ok(!JSON.parse(text).wrecks);assert.notEqual(loaded.phase,'sinking');
+});
+
+
+test('reefing retains useful wind drive between full canvas and furled sails',()=>{
+  const s=fresh(),p=s.player;s.weather=[];s.wind={angle:0,strength:13};p.angle=Math.PI/2;
+  p.sail=1;const full=C.sailingTarget(s,p);p.sail=0;const reef=C.sailingTarget(s,p);p.sail=-1;
+  assert.ok(full>0);assert.ok(Math.abs(reef/full-.65)<1e-8);assert.equal(C.sailingTarget(s,p),0);
+});
+
+test('rough seas have local 3D swell and down-wave drift; distant water remains calm',()=>{
+  const s=fresh();s.weather=[];s.hazards=[];s.wind={angle:0,strength:13};
+  const at={x:0,z:0},far={x:1500,z:0},calm=[],outside=[];
+  for(let t=0;t<12;t+=.1){calm.push(C.seaHeight(s,at,t));outside.push(C.seaHeight(s,far,t));}
+  s.weather=[{x:0,z:0,r:300,intensity:1,seed:0}];
+  let roughPeak=0;for(let t=0;t<12;t+=.1)roughPeak=Math.max(roughPeak,Math.abs(C.seaHeight(s,at,t)));
+  assert.ok(roughPeak>Math.max(...calm.map(Math.abs))*3);
+  for(let j=0;j<outside.length;j++)assert.ok(Math.abs(C.seaHeight(s,far,j*.1)-outside[j])<1e-8);
+  assert.ok(C.currentAt(s,at).z>.8);assert.deepEqual(C.currentAt(s,far),{x:0,z:0});
 });
